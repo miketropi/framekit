@@ -48,6 +48,8 @@ interface RunOptions {
   downloadFails?: number;
   motionsFails?: number;
   credentials?: boolean;
+  /** "combined" exercises HF_CREDENTIALS, the single field the dashboard provides. */
+  credentialForm?: "separate" | "combined" | "malformed";
   cwd?: string;
 }
 
@@ -66,12 +68,21 @@ async function runCli(args: string[], options: RunOptions = {}): Promise<RunResu
 
   const env: Record<string, string | undefined> = { ...process.env };
   delete env.HF_DEBUG;
-  if (options.credentials === false) {
-    delete env.HF_API_KEY;
-    delete env.HF_SECRET;
-  } else {
-    env.HF_API_KEY = "integration-api-key-000";
-    env.HF_SECRET = "integration-api-secret-000";
+  delete env.HF_API_KEY;
+  delete env.HF_SECRET;
+  delete env.HF_API_SECRET;
+  delete env.HF_CREDENTIALS;
+  delete env.HF_KEY;
+  if (options.credentials !== false) {
+    const form = options.credentialForm ?? "separate";
+    if (form === "combined") {
+      env.HF_CREDENTIALS = "integration-key-id-000:integration-key-secret-000";
+    } else if (form === "malformed") {
+      env.HF_CREDENTIALS = "integration-key-id-without-a-colon";
+    } else {
+      env.HF_API_KEY = "integration-api-key-000";
+      env.HF_SECRET = "integration-api-secret-000";
+    }
   }
   env.HF_TEST_PROVIDER_MODULE = fixturePath;
   env.HF_FAKE_SCENARIO = options.scenario ?? "image-completed";
@@ -162,6 +173,32 @@ describe("credential-free commands", () => {
     });
     const details = (payload.error as { details: Record<string, unknown> }).details;
     expect(details).toMatchObject({ providerSupported: true, nodeCompatible: true });
+  });
+
+  it("accepts the single-field credential form the dashboard provides", async () => {
+    const result = await runCli(["doctor", "--json"], { credentialForm: "combined" });
+    const payload = expectSingleJsonLine(result);
+
+    expect(result.code).toBe(0);
+    expect(payload.details).toMatchObject({
+      credentials: {
+        apiKey: true,
+        apiSecret: true,
+        source: "combined",
+        sourceVariable: "HF_CREDENTIALS",
+      },
+      discovery: { ok: true },
+    });
+  });
+
+  it("rejects a malformed combined credential as a configuration error", async () => {
+    const result = await runCli(["doctor", "--json"], { credentialForm: "malformed" });
+    const payload = expectSingleJsonLine(result);
+
+    expect(result.code).toBe(12);
+    expect(payload).toMatchObject({ ok: false, error: { code: "VALIDATION_FAILED" } });
+    expect((payload.error as { message: string }).message).toContain("<key_id>:<key_secret>");
+    expect(result.state).toEqual({});
   });
 
   it("reports a healthy doctor when credentials and provider are available", async () => {

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { hasCredentials, type ToolConfig } from "../config/env";
+import { describeCredentialProblem, hasCredentials, type ToolConfig } from "../config/env";
 import { ToolError, isToolError } from "../domain/errors";
 import type { MediaProvider } from "../domain/media-provider";
 import { SUPPORTED_PROVIDERS } from "../domain/media-provider";
@@ -28,7 +28,15 @@ export interface DoctorReport {
   provider: string;
   providerSupported: boolean;
   apiBaseUrl: string;
-  credentials: { apiKey: boolean; apiSecret: boolean };
+  credentials: {
+    apiKey: boolean;
+    apiSecret: boolean;
+    /** Which variables supplied them: "combined", "separate", "incomplete", "missing". */
+    source: string;
+    sourceVariable?: string;
+    /** Credential variables that were set, names only. */
+    presentVariables: string[];
+  };
   outputDirectory: { path: string; writable: boolean; error?: string };
   discovery?: { ok: boolean; motions: number };
   checks: DoctorCheck[];
@@ -63,6 +71,11 @@ export async function runDoctor(options: DoctorServiceOptions): Promise<DoctorRe
     credentials: {
       apiKey: options.config.credentials.apiKey !== undefined,
       apiSecret: options.config.credentials.apiSecret !== undefined,
+      source: options.config.credentials.source,
+      presentVariables: [...options.config.credentials.presentVariables],
+      ...(options.config.credentials.sourceVariable === ""
+        ? {}
+        : { sourceVariable: options.config.credentials.sourceVariable }),
     },
     outputDirectory: {
       path: outputDirectory,
@@ -76,8 +89,12 @@ export async function runDoctor(options: DoctorServiceOptions): Promise<DoctorRe
         name: "credentials",
         ok: credentialsPresent,
         detail: credentialsPresent
-          ? "HF_API_KEY and HF_SECRET present"
-          : "HF_API_KEY and/or HF_SECRET missing",
+          ? `credentials present via ${options.config.credentials.sourceVariable}`
+          : `credentials ${options.config.credentials.source}${
+              options.config.credentials.presentVariables.length === 0
+                ? ""
+                : ` (set: ${options.config.credentials.presentVariables.join(", ")})`
+            }; expected HF_CREDENTIALS or HF_API_KEY + HF_API_SECRET`,
       },
       {
         name: "output-directory",
@@ -90,8 +107,7 @@ export async function runDoctor(options: DoctorServiceOptions): Promise<DoctorRe
   if (!credentialsPresent) {
     throw new ToolError({
       code: "AUTHENTICATION_FAILED",
-      message:
-        "Higgsfield credentials are missing. Set HF_API_KEY and HF_SECRET before running commands that contact the provider.",
+      message: describeCredentialProblem(options.config.credentials),
       details: report,
     });
   }

@@ -52,10 +52,32 @@ hf --help
 Credentials come only from the environment. Never commit a populated `.env`.
 
 ```dotenv
+# Preferred: the single value the dashboard gives you, "<key_id>:<key_secret>"
+HF_CREDENTIALS=
+# Alternative: the separate pair (HF_SECRET and HF_KEY are also accepted)
 HF_API_KEY=
-HF_SECRET=
+HF_API_SECRET=
+
 HF_PROVIDER=higgsfield-v1
 ```
+
+| Credential form        | Variables                                          | Notes                                                                  |
+| ---------------------- | -------------------------------------------------- | ---------------------------------------------------------------------- |
+| Combined (recommended) | `HF_CREDENTIALS="KEY_ID:KEY_SECRET"`               | matched against the value from the dashboard; split on the first colon |
+| Combined alias         | `HF_KEY="KEY_ID:KEY_SECRET"`                       | same as above                                                          |
+| Separate               | `HF_API_KEY` + `HF_API_SECRET`                     | `HF_SECRET` is accepted as an alias for the secret                     |
+| Injected overrides     | `loadConfig({ overrides: { apiKey, apiSecret } })` | for embedders and tests                                                |
+
+The key id half is the UUID shown in the dashboard; the API rejects anything else with a
+`header.hf-api-key` validation error, which surfaces as `VALIDATION_FAILED`. A key id that
+is shaped correctly but unknown/disabled comes back as `AUTHENTICATION_FAILED`.
+
+A complete separate pair wins over a combined value; otherwise a combined value is used,
+which also rescues a half-configured pair. A malformed combined value (no colon, or an
+empty half) fails with `VALIDATION_FAILED` explaining the expected shape, and a
+half-configured pair fails with `AUTHENTICATION_FAILED` naming the variable that is
+missing. `hf doctor` reports which variables were used (`credentials.sourceVariable`,
+names only, never values).
 
 Optional overrides (defaults in parentheses):
 

@@ -139,7 +139,8 @@ export function normalizeProviderError(
   if (error instanceof CredentialsMissedError || error instanceof AuthenticationError) {
     return new ToolError({
       code: "AUTHENTICATION_FAILED",
-      message: "Higgsfield rejected the configured credentials (HF_API_KEY / HF_SECRET).",
+      message:
+        "Higgsfield rejected the configured credentials. Check HF_CREDENTIALS (or HF_API_KEY + HF_API_SECRET); the key id must be the UUID from the dashboard.",
       details: { reason: messageOf(error, "authentication failed") },
       cause: error,
     });
