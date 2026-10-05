@@ -379,6 +379,31 @@ They teach the decision procedure (reuse before generating, dry-run when unsure,
 parsing, manifest verification, minimum paid variants) and never contain credentials or
 endpoint paths.
 
+## Install the Skills into your agent
+
+The three Skills are plain `SKILL.md` directories, so any shell-capable agent can read
+them from `skills/`. For OMP they can be registered user-globally (available in every
+session) or per project:
+
+```bash
+pnpm skills:install                    # user-global: ~/.omp/agent/skills (OMP native provider, priority 100)
+pnpm skills:install:project            # project-local: ./.omp/skills
+node scripts/install-skills.mjs --copy # copy instead of symlink (machines without symlink support)
+node scripts/install-skills.mjs --force --dry-run
+```
+
+Skills are symlinked, so edits in this repository take effect on the next OMP start.
+OMP discovers them at startup and exposes them as `skill://<name>` (and `/skill:<name>`
+in interactive mode):
+
+```bash
+omp read skill://higgsfield-media-workflow      # verify discovery
+```
+
+Add `--project <dir>` to target another checkout. Other agents: point them at
+`skills/` directly, or copy the directories into their own skills root
+(`~/.claude/skills`, `~/.agents/skills`, …).
+
 ## Tests
 
 ```bash

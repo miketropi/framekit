@@ -25,18 +25,21 @@
     "dist",
     "README.md",
     "skills",
+    "scripts",
     ".env.example"
   ],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.examples.json",
-    "lint": "eslint . && prettier --check \"**/*.{ts,tsx,json,md}\"",
-    "lint:fix": "eslint . --fix && prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "lint": "eslint . && prettier --check \"**/*.{ts,tsx,json,md,mjs}\"",
+    "lint:fix": "eslint . --fix && prettier --write \"**/*.{ts,tsx,json,md,mjs}\"",
     "test": "pnpm build && vitest run",
     "test:watch": "vitest",
     "test:live": "vitest run --config vitest.live.config.ts tests/live/connectivity.test.ts",
     "test:live:paid": "vitest run --config vitest.live.config.ts tests/live/paid",
     "hf": "tsx bin/hf.ts",
+    "skills:install": "node scripts/install-skills.mjs",
+    "skills:install:project": "node scripts/install-skills.mjs --project .",
     "prepack": "pnpm build"
   },
   "dependencies": {

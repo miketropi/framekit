@@ -10,7 +10,11 @@ const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAwAB/AL+2gAAAABJRU5ErkJggg==",
   "base64",
 );
-const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x20]), Buffer.from("ftypisom"), Buffer.alloc(48, 7)]);
+const MP4 = Buffer.concat([
+  Buffer.from([0, 0, 0, 0x20]),
+  Buffer.from("ftypisom"),
+  Buffer.alloc(48, 7),
+]);
 
 const scenario = process.env.HF_FAKE_SCENARIO ?? "image-completed";
 const stateFile = process.env.HF_FAKE_STATE;
