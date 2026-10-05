@@ -5,7 +5,7 @@ import type { MediaProvider } from "../domain/media-provider";
 import { SUPPORTED_PROVIDERS } from "../domain/media-provider";
 import { scrubUrlForStorage } from "../domain/redact";
 import { probeWritableDirectory } from "../storage/writable";
-import { MINIMUM_NODE_MAJOR, PACKAGE_NAME, PACKAGE_VERSION } from "../version";
+import { MINIMUM_NODE_VERSION, PACKAGE_NAME, PACKAGE_VERSION } from "../version";
 
 /**
  * `hf doctor` (§5.1/§6.4): reports runtime, credentials presence, provider
@@ -23,7 +23,7 @@ export interface DoctorReport {
   packageName: string;
   packageVersion: string;
   nodeVersion: string;
-  minimumNodeMajor: number;
+  minimumNodeVersion: string;
   nodeCompatible: boolean;
   provider: string;
   providerSupported: boolean;
@@ -55,14 +55,26 @@ export async function runDoctor(options: DoctorServiceOptions): Promise<DoctorRe
   const probe = await probeWritableDirectory(outputDirectory);
   const credentialsPresent = hasCredentials(options.config);
   const providerSupported = SUPPORTED_PROVIDERS[options.config.provider] !== undefined;
-  const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
-  const nodeCompatible = nodeMajor >= MINIMUM_NODE_MAJOR;
+  const [major = "0", minor = "0", patch = "0"] = process.versions.node.split(".");
+  const currentNode: [number, number, number] = [
+    Number.parseInt(major, 10),
+    Number.parseInt(minor, 10),
+    Number.parseInt(patch, 10),
+  ];
+  const [requiredMajor, requiredMinor, requiredPatch] = MINIMUM_NODE_VERSION.split(".").map(
+    (part) => Number.parseInt(part, 10),
+  ) as [number, number, number];
+  const nodeCompatible =
+    currentNode[0] > requiredMajor ||
+    (currentNode[0] === requiredMajor &&
+      (currentNode[1] > requiredMinor ||
+        (currentNode[1] === requiredMinor && currentNode[2] >= requiredPatch)));
 
   const report: DoctorReport = {
     packageName: PACKAGE_NAME,
     packageVersion: PACKAGE_VERSION,
     nodeVersion: process.versions.node,
-    minimumNodeMajor: MINIMUM_NODE_MAJOR,
+    minimumNodeVersion: MINIMUM_NODE_VERSION,
     nodeCompatible,
     provider: options.config.provider,
     providerSupported,
@@ -83,7 +95,11 @@ export async function runDoctor(options: DoctorServiceOptions): Promise<DoctorRe
       ...(probe.error === undefined ? {} : { error: probe.error }),
     },
     checks: [
-      { name: "node", ok: nodeCompatible, detail: `node ${process.versions.node}` },
+      {
+        name: "node",
+        ok: nodeCompatible,
+        detail: `node ${process.versions.node} (minimum ${MINIMUM_NODE_VERSION})`,
+      },
       { name: "provider", ok: providerSupported, detail: options.config.provider },
       {
         name: "credentials",

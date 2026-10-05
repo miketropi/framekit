@@ -12,6 +12,12 @@
  */
 
 export { runCli, buildProgram, type RunOptions } from "./cli/program";
+export {
+  ENV_FILE_VARIABLE,
+  DEFAULT_ENV_FILE,
+  loadEnvFileInto,
+  type EnvFileResult,
+} from "./cli/env-file";
 export { EXIT_CODES, EXIT_CODE_BY_ERROR, exitCodeForErrorCode } from "./cli/exit-codes";
 export type { ProcessLike, CliRuntime, RuntimeOverrides } from "./cli/runtime";
 export {
@@ -97,4 +103,4 @@ export {
   sha256OfFile,
   sha256Hex,
 } from "./application/fingerprint";
-export { PACKAGE_NAME, PACKAGE_VERSION, MINIMUM_NODE_MAJOR } from "./version";
+export { PACKAGE_NAME, PACKAGE_VERSION, MINIMUM_NODE_VERSION } from "./version";

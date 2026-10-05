@@ -24,7 +24,7 @@ Central rule: **Skills decide. The CLI executes. The provider translates. Higgsf
 
 ## Requirements
 
-- Node.js >= 20.10
+- Node.js >= 20.12 (uses `process.loadEnvFile`)
 - pnpm (the repository pins `packageManager: pnpm@11.13.0`)
 
 ## Install
@@ -49,7 +49,9 @@ hf --help
 
 ## Environment
 
-Credentials come only from the environment. Never commit a populated `.env`.
+Credentials come only from the environment. `hf` loads `.env` from the working
+directory automatically (override with `HF_ENV_FILE=<path>`), and an exported variable
+always wins over the file. Never commit a populated `.env`.
 
 ```dotenv
 # Preferred: the single value the dashboard gives you, "<key_id>:<key_secret>"
@@ -319,6 +321,22 @@ Do not confuse `hf status` (this limitation, remote-only, no local effect) with 
 **polling** `TIMEOUT` from `hf image`/`hf video`/`hf speak`, which is a different contract:
 resumability is advertised through `requestId` + `resumeWith`, and all polling traffic uses
 the same provider-private transport.
+
+### Where `.env` is looked up
+
+`hf` reads `.env` from the **current working directory** (or the path in `HF_ENV_FILE`).
+Since agents usually run `hf` from the project they are generating into, put the file next
+to that project, point `HF_ENV_FILE` at a shared one, or export the variables in your shell:
+
+```bash
+hf doctor --json                                   # uses ./.env
+
+HF_ENV_FILE=~/.config/higgsfield/.env hf doctor --json   # explicit file, any cwd
+```
+
+Exported variables always win over file values, and a missing default `.env` is not an
+error (a missing `HF_ENV_FILE` target is). Credential values are never logged: the CLI
+reports only how many variables it loaded and from which path.
 
 ### Cache behaviour
 

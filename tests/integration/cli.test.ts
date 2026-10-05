@@ -50,6 +50,9 @@ interface RunOptions {
   credentials?: boolean;
   /** "combined" exercises HF_CREDENTIALS, the single field the dashboard provides. */
   credentialForm?: "separate" | "combined" | "malformed";
+  /** Relative path of a .env file to write into the working directory. */
+  envFile?: string;
+  envFileContents?: string;
   cwd?: string;
 }
 
@@ -73,6 +76,7 @@ async function runCli(args: string[], options: RunOptions = {}): Promise<RunResu
   delete env.HF_API_SECRET;
   delete env.HF_CREDENTIALS;
   delete env.HF_KEY;
+  delete env.HF_ENV_FILE;
   if (options.credentials !== false) {
     const form = options.credentialForm ?? "separate";
     if (form === "combined") {
@@ -91,6 +95,15 @@ async function runCli(args: string[], options: RunOptions = {}): Promise<RunResu
   env.HF_FAKE_MOTIONS_FAILS = String(options.motionsFails ?? 0);
   env.HF_RETRY_BACKOFF_MS = "10";
   env.HF_RETRY_MAX_BACKOFF_MS = "20";
+
+  if (options.envFile !== undefined && options.envFile !== ".env") {
+    env.HF_ENV_FILE = options.envFile;
+  }
+  if (options.envFileContents !== undefined) {
+    const envPath = path.join(cwd, options.envFile ?? ".env");
+    await mkdir(path.dirname(envPath), { recursive: true });
+    await writeFile(envPath, options.envFileContents);
+  }
 
   let code = 0;
   let stdout = "";
@@ -173,6 +186,77 @@ describe("credential-free commands", () => {
     });
     const details = (payload.error as { details: Record<string, unknown> }).details;
     expect(details).toMatchObject({ providerSupported: true, nodeCompatible: true });
+  });
+
+  it("loads credentials from a .env file in the working directory", async () => {
+    const result = await runCli(["doctor", "--json"], {
+      credentials: false,
+      envFileContents:
+        '# local secrets\nHF_CREDENTIALS="envfile-key-id-000:envfile-key-secret-000"\n',
+    });
+    const payload = expectSingleJsonLine(result);
+
+    expect(result.code).toBe(0);
+    expect(payload.details).toMatchObject({
+      credentials: {
+        apiKey: true,
+        apiSecret: true,
+        source: "combined",
+        sourceVariable: "HF_CREDENTIALS",
+      },
+      discovery: { ok: true },
+    });
+    expect(result.stderr).toContain("loaded 1 variable from");
+    expect(result.stderr).not.toContain("envfile-key-secret-000");
+  });
+
+  it("lets an exported credential win over the .env value", async () => {
+    const result = await runCli(["doctor", "--json"], {
+      credentialForm: "combined",
+      envFileContents: "HF_CREDENTIALS=malformed-envfile-value\n",
+    });
+
+    expect(result.code).toBe(0);
+    expect(expectSingleJsonLine(result).details).toMatchObject({
+      credentials: { apiKey: true, source: "combined" },
+      discovery: { ok: true },
+    });
+  });
+
+  it("honours HF_ENV_FILE and rejects a missing path", async () => {
+    const loaded = await runCli(["doctor", "--json"], {
+      credentials: false,
+      envFile: "secrets/dev.env",
+      envFileContents: "HF_CREDENTIALS=sibling-key-id-000:sibling-key-secret-000\n",
+    });
+    expect(loaded.code).toBe(0);
+    expect(expectSingleJsonLine(loaded).details).toMatchObject({
+      credentials: { source: "combined" },
+    });
+
+    const missing = await runCli(["doctor", "--json"], {
+      credentials: false,
+      envFile: "secrets/absent.env",
+    });
+    expect(missing.code).toBe(12);
+    expect(expectSingleJsonLine(missing)).toMatchObject({
+      ok: false,
+      error: { code: "VALIDATION_FAILED" },
+    });
+    expect((missing.parsed?.error as { message: string }).message).toContain("HF_ENV_FILE");
+  });
+
+  it("surfaces a malformed .env credential as a configuration error", async () => {
+    const result = await runCli(["doctor", "--json"], {
+      credentials: false,
+      envFileContents: "HF_CREDENTIALS=single-opaque-token-without-colon\n",
+    });
+
+    expect(result.code).toBe(12);
+    expect(expectSingleJsonLine(result)).toMatchObject({
+      ok: false,
+      error: { code: "VALIDATION_FAILED" },
+    });
   });
 
   it("accepts the single-field credential form the dashboard provides", async () => {

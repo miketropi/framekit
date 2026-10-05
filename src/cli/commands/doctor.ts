@@ -11,7 +11,7 @@ function humanLines(report: DoctorReport): string[] {
   return [
     `doctor: ${report.checks.every((check) => check.ok) ? "ok" : "failed"}`,
     `  package: ${report.packageName}@${report.packageVersion}`,
-    `  node: ${report.nodeVersion} (minimum ${report.minimumNodeMajor})`,
+    `  node: ${report.nodeVersion} (minimum ${report.minimumNodeVersion})`,
     `  provider: ${report.provider} (supported: ${report.providerSupported})`,
     `  credentials: apiKey=${report.credentials.apiKey} apiSecret=${report.credentials.apiSecret}`,
     `  output: ${report.outputDirectory.path} (writable: ${report.outputDirectory.writable})`,

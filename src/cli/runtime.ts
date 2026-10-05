@@ -1,4 +1,5 @@
 import { loadConfig, type ConfigOverrides, type ToolConfig } from "../config/env";
+import { ENV_FILE_VARIABLE, loadEnvFileInto } from "./env-file";
 import type { Clock, RandomSource, Sleeper } from "../domain/runtime";
 import { toToolError } from "../domain/errors";
 import { createToolkitProvider, type Toolkit, type ToolkitProvider } from "../application/toolkit";
@@ -46,11 +47,27 @@ export function createRuntime(
 ): CliRuntime {
   const env = overrides.env ?? processLike.env;
   const cwd = overrides.cwd ?? processLike.cwd();
+  const jsonRequested = argv.includes("--json");
+
+  // A local `.env` is the conventional way to populate the environment; an injected
+  // environment (embedders, tests) is used verbatim and never reads files.
+  if (overrides.env === undefined) {
+    const envFile = loadEnvFileInto({
+      cwd,
+      env,
+      ...(env[ENV_FILE_VARIABLE] === undefined ? {} : { explicitPath: env[ENV_FILE_VARIABLE] }),
+    });
+    if (envFile.loaded && envFile.variables > 0) {
+      processLike.stderr.write(
+        `[info] loaded ${envFile.variables} variable${envFile.variables === 1 ? "" : "s"} from ${envFile.path}\n`,
+      );
+    }
+  }
   const config = loadConfig({
     env,
     ...(overrides.config === undefined ? {} : { overrides: overrides.config }),
   });
-  const json = argv.includes("--json");
+  const json = jsonRequested;
   const output = new CliOutput({
     stdout: processLike.stdout,
     stderr: processLike.stderr,
