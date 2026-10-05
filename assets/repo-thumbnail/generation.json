@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "assetId": "repo-thumbnail",
+  "provider": "higgsfield-v1",
+  "capability": "text-to-image",
+  "logicalModel": "soul-image",
+  "fingerprint": "sha256:69052572121d5b0a81dff2c4da93a2b375aa2537a55f995d7cbb694465ec7350",
+  "createdAt": "2026-10-05T04:42:47.448Z",
+  "prompt": "Dark editorial hero image for a developer tool: a matte black studio wall with a pinned film contact sheet of cinematic frames on the right, softly rim-lit; a small floating terminal window in the foreground shows faint green log lines. Shallow depth of field, 35mm photography, high contrast, generous empty negative space on the left for a title. No text, no logos, no watermark.",
+  "inputs": [],
+  "request": {
+    "preset": "landscape-hd",
+    "logicalModel": "soul-image",
+    "widthAndHeight": "2048x1152",
+    "quality": "1080p",
+    "batch": 1
+  },
+  "remote": {
+    "requestId": "c35abd45-c49d-4000-b3ed-bf96e39fdb95",
+    "status": "completed"
+  },
+  "outputs": [
+    {
+      "type": "image",
+      "path": "image-01.png",
+      "mimeType": "image/png",
+      "sha256": "86308f3448442c434000fd3b23efd9d343d57e812d8f3ff04c12ba84ca7cbb31",
+      "bytes": 1042799
+    }
+  ]
+}
