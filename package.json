@@ -1,0 +1,69 @@
+{
+  "name": "@framekit/higgsfield-tools",
+  "version": "1.0.0",
+  "private": false,
+  "description": "Local, agent-neutral CLI adapter that generates Higgsfield image/video assets into deterministic project-local files and manifests.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "packageManager": "pnpm@11.13.0",
+  "bin": {
+    "hf": "dist/bin/hf.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "skills",
+    ".env.example"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.examples.json",
+    "lint": "eslint . && prettier --check \"**/*.{ts,tsx,json,md}\"",
+    "lint:fix": "eslint . --fix && prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "test": "pnpm build && vitest run",
+    "test:watch": "vitest",
+    "test:live": "vitest run --config vitest.live.config.ts tests/live/connectivity.test.ts",
+    "test:live:paid": "vitest run --config vitest.live.config.ts tests/live/paid",
+    "hf": "tsx bin/hf.ts",
+    "prepack": "pnpm build"
+  },
+  "dependencies": {
+    "@higgsfield/client": "0.2.6",
+    "commander": "^15.0.0",
+    "file-type": "^22.1.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.12.0",
+    "prettier": "^3.9.9",
+    "react": "^19.3.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^5.0.3"
+  },
+  "keywords": [
+    "higgsfield",
+    "cli",
+    "agent-tools",
+    "text-to-image",
+    "image-to-video",
+    "remotion"
+  ]
+}

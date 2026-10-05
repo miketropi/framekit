@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "remotion": ["./tests/fixtures/remotion-stub.tsx"]
+    }
+  },
+  "include": ["examples/**/*.tsx", "tests/fixtures/remotion-stub.tsx"]
+}

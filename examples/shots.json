@@ -1,0 +1,62 @@
+{
+  "$comment": "Shot list for the example project. Lifecycle: planned | needs_asset | generating | generated | approved | rejected. Only 'approved' shots are composed by default.",
+  "project": "demo-launch-film",
+  "shots": [
+    {
+      "id": "shot-001",
+      "duration": 4,
+      "source": {
+        "type": "generated-image",
+        "asset": "./assets/shot-001/image-01.png",
+        "manifest": "./assets/shot-001/generation.json"
+      },
+      "creative": {
+        "subjectAction": "Volunteer pauses at the school gate, looking up",
+        "camera": "static, shallow depth of field"
+      },
+      "status": "approved"
+    },
+    {
+      "id": "shot-003",
+      "duration": 5,
+      "source": {
+        "type": "generated-video",
+        "asset": "./assets/shot-003/video.mp4",
+        "manifest": "./assets/shot-003/generation.json"
+      },
+      "creative": {
+        "subjectAction": "Volunteer turns toward the school entrance and walks through",
+        "camera": "slow dolly-in"
+      },
+      "status": "approved"
+    },
+    {
+      "id": "shot-004",
+      "duration": 6,
+      "source": {
+        "type": "generated-video",
+        "asset": null,
+        "manifest": null
+      },
+      "creative": {
+        "subjectAction": "Children cross the courtyard carrying books",
+        "camera": "gentle crane down"
+      },
+      "status": "needs_asset"
+    },
+    {
+      "id": "shot-005",
+      "duration": 3,
+      "source": {
+        "type": "generated-image",
+        "asset": null,
+        "manifest": null
+      },
+      "creative": {
+        "subjectAction": "Close-up of hands handing over a notebook",
+        "camera": "static, 85mm"
+      },
+      "status": "planned"
+    }
+  ]
+}

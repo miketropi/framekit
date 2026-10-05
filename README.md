@@ -1,0 +1,384 @@
+# @framekit/higgsfield-tools
+
+A thin, local, agent-neutral adapter that turns Higgsfield generation requests into
+**deterministic project-local media files** plus `generation.json` manifests, so agents
+and Remotion consume local assets instead of API calls.
+
+```
+Agent / Skill  ->  hf CLI  ->  MediaProvider  ->  Higgsfield V1  ->  local media + manifest  ->  Remotion
+```
+
+Central rule: **Skills decide. The CLI executes. The provider translates. Higgsfield generates. Remotion composes.**
+
+## Status and scope
+
+- Implements the V1 capability set: text-to-image, image-to-video, speech-to-video,
+  local upload, generic V1 endpoint execution, polling/status inspection, result
+  download, manifests, retries, structured errors, motion/style discovery with cache,
+  optional character references, dry-run validation, and agent-friendly JSON.
+- Deliberately **not** included: MCP or HTTP server, database, queue, UI, accounts,
+  billing, distributed workers, LLM prompt rewriting, and no Remotion rendering logic.
+- Higgsfield V1 is deprecated upstream. All V1 specifics live behind `MediaProvider`, so
+  moving to V2 means adding `src/providers/higgsfield-v2/` — not changing the CLI, JSON
+  schema, manifests, Skills, or Remotion integration.
+
+## Requirements
+
+- Node.js >= 20.10
+- pnpm (the repository pins `packageManager: pnpm@11.13.0`)
+
+## Install
+
+```bash
+pnpm install
+pnpm build
+```
+
+Use it from this repository:
+
+```bash
+node dist/bin/hf.js --help
+```
+
+Or link it while developing source changes:
+
+```bash
+pnpm link --global        # exposes `hf`
+hf --help
+```
+
+## Environment
+
+Credentials come only from the environment. Never commit a populated `.env`.
+
+```dotenv
+HF_API_KEY=
+HF_SECRET=
+HF_PROVIDER=higgsfield-v1
+```
+
+Optional overrides (defaults in parentheses):
+
+| Variable                                          | Meaning                                           |
+| ------------------------------------------------- | ------------------------------------------------- |
+| `HF_API_BASE_URL`                                 | API host (`https://api.higgsfield.ai`)            |
+| `HF_REQUEST_TIMEOUT_MS`                           | per-request timeout (`120000`)                    |
+| `HF_RETRY_COUNT`                                  | retries for read-only/idempotent operations (`3`) |
+| `HF_RETRY_BACKOFF_MS` / `HF_RETRY_MAX_BACKOFF_MS` | backoff base/cap (`1000` / `30000`)               |
+| `HF_POLL_INTERVAL_MS`                             | job poll interval (`2000`)                        |
+| `HF_IMAGE_POLL_LIMIT_MS`                          | image polling budget (`300000`)                   |
+| `HF_VIDEO_POLL_LIMIT_MS`                          | video/speech polling budget (`900000`)            |
+| `HF_CACHE_ROOT`                                   | cache directory (`.cache/higgsfield`)             |
+| `HF_DEBUG`                                        | `1` adds stacks/details to stderr                 |
+
+`--help`, `--dry-run`, and `hf doctor`'s structure check work without credentials.
+Credential validation happens only when a command actually contacts the provider.
+
+## Commands
+
+```bash
+hf doctor [--output <dir>] [--json]
+
+hf image --prompt <text> --preset <name> --output <dir> \
+  [--style <name|id>] [--seed <0..1000000>] [--batch <1|4>] \
+  [--reference <path|url>] [--reference-strength <0..1>] [--character <id>] \
+  [--force] [--dry-run] [--json]
+
+hf video --input <path|url> --prompt <text> --preset <name> --output <dir> \
+  [--model <logical-model>] [--motion <name|id>] [--motion-strength <0..1>] \
+  [--force] [--dry-run] [--json]
+
+hf speak --image <path|url> --audio <path|url> --prompt <text> --preset <name> \
+  --output <dir> [--force] [--dry-run] [--json]
+
+hf upload <path> [--json]
+hf generate --endpoint </v1/...> --input <json-file> --output <dir> [--force] [--dry-run] [--json]
+hf status <request-id> [--json]
+hf motions [--refresh] [--json]
+hf styles [--refresh] [--json]
+hf characters create --name <name> --reference <path|url> [--reference ...] [--json]
+hf characters list [--page <n>] [--page-size <1..100>] [--json]
+```
+
+### Presets and logical models
+
+Agents name intent; the adapter resolves provider parameters.
+
+| Preset         | Command | Logical model | Resolved parameters                         |
+| -------------- | ------- | ------------- | ------------------------------------------- |
+| `square-hd`    | `image` | `soul-image`  | `1536x1536`, `1080p`, batch 1               |
+| `portrait-hd`  | `image` | `soul-image`  | `1536x2048`, `1080p`, batch 1               |
+| `landscape-hd` | `image` | `soul-image`  | `2048x1152`, `1080p`, batch 1               |
+| `cinematic`    | `video` | `dop-video`   | model `dop-standard`, motion strength `0.8` |
+| `standard`     | `speak` | `speak-video` | quality `mid`, duration `5`                 |
+
+Explicit flags win over preset values. `--reference-strength` requires `--reference`;
+`--motion-strength` requires `--motion`. `--batch` accepts only `1` or `4`.
+
+`--style` and `--motion` accept an exact id first, then an exact name
+(case-insensitive). Zero or multiple matches is an error listing candidate ids — the
+adapter never guesses.
+
+### Generic endpoint warning
+
+`hf generate` is an escape hatch for supported V1 endpoints that have no typed command
+yet. It accepts only endpoints beginning `/v1/`, a UTF-8 JSON object body no larger than
+1 MiB, an explicit `--output`, and it rejects prototype-polluting keys. Prefer the typed
+commands: they validate parameters, resolve presets, and stay stable across provider
+migrations. Example body for a hypothetical endpoint:
+
+```json
+{ "prompt": "...", "width_and_height": "1536x1536" }
+```
+
+```bash
+hf generate --endpoint /v1/text2image/soul --input request.json --output assets/custom-001 --json
+```
+
+## Output contract
+
+`--json` writes **exactly one compact JSON document plus a newline to stdout**. Progress
+and diagnostics go to stderr. Stdout stays parseable by agents in every mode, including
+failures.
+
+Success:
+
+```json
+{
+  "ok": true,
+  "operation": "image-to-video",
+  "provider": "higgsfield-v1",
+  "requestId": "remote-job-id",
+  "status": "completed",
+  "fingerprint": "sha256:...",
+  "logicalModel": "dop-video",
+  "outputDirectory": "projects/demo/assets/shot-003",
+  "manifest": "projects/demo/assets/shot-003/generation.json",
+  "assets": [
+    {
+      "type": "video",
+      "path": "projects/demo/assets/shot-003/video.mp4",
+      "mimeType": "video/mp4",
+      "sha256": "...",
+      "bytes": 1234567,
+      "remoteUrl": "https://..."
+    }
+  ],
+  "inputs": [
+    { "kind": "image", "localPath": "projects/demo/keyframes/shot-01.png", "sha256": "..." }
+  ],
+  "resolvedRequest": { "preset": "cinematic", "model": "dop-standard" },
+  "reused": false,
+  "dryRun": false
+}
+```
+
+Failure (always this shape, never a stack trace unless `HF_DEBUG=1`):
+
+```json
+{ "ok": false, "error": { "code": "INSUFFICIENT_CREDITS", "message": "...", "retryable": false } }
+```
+
+`--dry-run` returns `status: "validated"` with a fingerprint and no `requestId`,
+`assets`, `manifest`, or output directory, and performs no upload, provider call, cache
+write, or manifest write.
+
+### Exit codes
+
+| Code | Meaning                         |
+| ---- | ------------------------------- |
+| 0    | success                         |
+| 2    | invalid CLI usage               |
+| 10   | authentication                  |
+| 11   | insufficient credits            |
+| 12   | validation / invalid input      |
+| 20   | provider / network              |
+| 21   | rate limited                    |
+| 22   | timeout                         |
+| 30   | generation failed (or canceled) |
+| 31   | moderation rejected             |
+| 40   | upload / download               |
+| 50   | local filesystem                |
+| 70   | unexpected                      |
+
+Prefer `error.code` in JSON; exit codes are for shell branching. `CANCELED` and
+`GENERATION_FAILED` share exit 30.
+
+### Error codes
+
+`AUTHENTICATION_FAILED`, `INSUFFICIENT_CREDITS`, `INVALID_INPUT`, `VALIDATION_FAILED`,
+`RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `GENERATION_FAILED`, `MODERATION_REJECTED`,
+`CANCELED`, `TIMEOUT`, `UPLOAD_FAILED`, `DOWNLOAD_FAILED`, `LOCAL_IO_ERROR`,
+`UNKNOWN_PROVIDER_ERROR`.
+
+`retryable` is true only for rate limiting, provider unavailability, and timeouts. A
+polling `TIMEOUT` includes `requestId` and a `resumeWith` hint; a submission timeout
+does **not** claim the request is resumable.
+
+## Asset layout and manifests
+
+```text
+projects/demo/assets/shot-003/
+├── video.mp4            # image-01.png, image-02.png ... for image batches; audio.wav for audio
+└── generation.json
+```
+
+`generation.json` (schema version 1):
+
+```json
+{
+  "schemaVersion": 1,
+  "assetId": "shot-003",
+  "provider": "higgsfield-v1",
+  "capability": "image-to-video",
+  "logicalModel": "dop-video",
+  "fingerprint": "sha256:...",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "prompt": "Slow cinematic dolly-in...",
+  "inputs": [{ "kind": "image", "localPath": "../keyframes/shot-003.png", "sha256": "..." }],
+  "request": { "preset": "cinematic", "motion": "Zoom In" },
+  "remote": { "requestId": "...", "status": "completed" },
+  "outputs": [
+    {
+      "type": "video",
+      "path": "video.mp4",
+      "mimeType": "video/mp4",
+      "sha256": "...",
+      "bytes": 1234567
+    }
+  ]
+}
+```
+
+No credentials, no signed `?query` parameters, no URL userinfo, and no uploaded CDN URL
+for a local source are ever stored or echoed — including on the `hf generate` escape
+hatch, where the body is sent to the provider verbatim but stored and printed scrubbed.
+`assets[].remoteUrl` in the success envelope is informational and query-stripped. Media is downloaded to a staging directory, verified (non-zero size, media type,
+SHA-256), renamed into place, and only then is the manifest written atomically. A failed
+download leaves no final file, no `.partial` file, and no manifest.
+
+## Duplicate and cost protection
+
+Before any paid submission the adapter computes
+`sha256:...` over provider + logical model + capability + normalized parameters + prompt
+
+- input hashes (or normalized URLs), and then:
+
+1. **Reuse** — if `generation.json` exists with the same fingerprint, recorded status
+   `completed`, and every declared output present with a matching SHA-256, the command
+   returns the existing result and submits nothing (`reused: true`).
+2. **Conflict** — if a verified completed generation with a _different_ fingerprint
+   exists, the command fails with `VALIDATION_FAILED` (exit 12) instead of overwriting.
+3. **Replace** — `--force` regenerates; files are replaced only after every download
+   verified.
+
+Generation is submitted exactly once: the SDK's own retry loop is disabled
+(`maxRetries: 0`) and **every** ambiguous submission failure (timeout, socket reset, gateway
+5xx) is reported with `retryable: false`, because the request may already be accepted and
+billed. A submission that succeeds but then fails while polling keeps its `requestId`, so
+the paid job can be inspected with `hf status` instead of resubmitted. Retries apply only
+to read-only or idempotent operations (status, discovery, uploads) and to result
+downloads, which retry a transient CDN failure so a paid result is not stranded.
+
+### `hf status` and V1 status availability
+
+The published `@higgsfield/client` V1 SDK exposes no public status method, so the adapter
+queries the same authenticated V1 job-set route the SDK polls internally
+(`/v1/job-sets/{requestId}`) and normalizes the result. This route is provider-private: it
+never leaks through `MediaProvider`, and it is the only reason the provider holds a second
+transport.
+
+If the live API does not serve that route, `hf status` reports
+`UNKNOWN_PROVIDER_ERROR` ("V1 status unavailable", sanitized) and exits 20. It never
+fabricates a status from a stale local manifest or from a `requestId` recorded on disk —
+absence of remote information is reported as absence.
+
+Do not confuse `hf status` (this limitation, remote-only, no local effect) with a
+**polling** `TIMEOUT` from `hf image`/`hf video`/`hf speak`, which is a different contract:
+resumability is advertised through `requestId` + `resumeWith`, and all polling traffic uses
+the same provider-private transport.
+
+### Cache behaviour
+
+`.cache/higgsfield/uploads.json` maps a file's content SHA-256 to its uploaded URL, so
+re-running a command never re-uploads unchanged bytes; `motions.json` and `styles.json`
+hold discovery results with a 24-hour TTL (`--refresh` forces a provider read, and a failed
+refresh falls back to the stale cache with `stale: true`). Corrupt or schema-mismatched
+entries are ignored individually, and the next successful refresh replaces them. Two `hf`
+processes uploading _different_ files at the same instant can lose one cache entry; the
+cost is a redundant upload, never a wrong asset.
+
+## Remotion boundary
+
+Remotion composes local files; it never calls Higgsfield.
+
+```
+Higgsfield -> assets/shot-003/video.mp4 -> Remotion scene
+```
+
+See `examples/remotion-consumption.tsx` (no network, no generation) and
+`examples/AGENTS.md` plus `examples/shots.json` for the shot lifecycle
+(`planned | needs_asset | generating | generated | approved | rejected`, only `approved`
+included by default).
+
+## Agent usage
+
+Skills live in `skills/`:
+
+- `skills/higgsfield-image-generation/SKILL.md`
+- `skills/higgsfield-video-generation/SKILL.md`
+- `skills/higgsfield-media-workflow/SKILL.md`
+
+They teach the decision procedure (reuse before generating, dry-run when unsure, JSON
+parsing, manifest verification, minimum paid variants) and never contain credentials or
+endpoint paths.
+
+## Tests
+
+```bash
+pnpm test          # unit + mocked end-to-end CLI tests; no network, no credits
+```
+
+The default suite builds the CLI and drives it through a fake `MediaProvider`, so it is
+offline and free. The fake provider is injected with the test-only
+`HF_TEST_PROVIDER_MODULE` environment variable pointing at an ESM module that exports
+`createProvider(config)`.
+
+Live checks are opt-in and separate from the default gate:
+
+```bash
+HF_LIVE_TEST=1 pnpm test:live             # doctor/discovery/status-safe checks; no generation
+HF_LIVE_PAID_TEST=1 pnpm test:live:paid   # billable generation; never run automatically
+```
+
+## Migration to V2
+
+`src/domain/media-provider.ts` is the seam. A V2 provider must satisfy:
+
+```ts
+generate(request) -> GenerationResult
+upload(request) -> UploadedAsset
+getStatus(requestId) -> GenerationStatus
+listMotions() / listStyles()
+createCharacter(request) / listCharacters(page, pageSize)
+```
+
+A provider signals failure either by throwing `ToolError` or by throwing any object with
+the same shape (`code` from the error taxonomy plus a string `message`), so a separately
+built provider module keeps its taxonomy across the boundary. `generate` must throw for
+failed, moderated, or canceled jobs and return only a completed result; the application
+enforces that too.
+
+Then set `HF_PROVIDER=higgsfield-v2`. The CLI commands, JSON envelope, manifests, Skills,
+and Remotion consumption stay unchanged.
+
+## Quality gate
+
+```bash
+pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm pack --dry-run
+```
+
+`pnpm test` builds the CLI first, then runs the unit and mocked end-to-end suites.
+`pnpm typecheck` also typechecks `examples/remotion-consumption.tsx` against a local
+Remotion stub (`tsconfig.examples.json`), because Remotion/React are not dependencies of
+this package.
