@@ -121,6 +121,13 @@ export class CliOutput {
     this.stderr.write(`[error] exit ${exitCode}\n`);
   }
 
+  /** Actionable nudge when the CLI is invoked without a command. */
+  usageHint(): void {
+    this.stderr.write(
+      '[hint] run "hf --help" for the command list, or "hf doctor --json" to check the setup\n',
+    );
+  }
+
   progress(message: string): void {
     this.stderr.write(`[info] ${message}\n`);
   }

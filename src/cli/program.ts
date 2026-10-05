@@ -17,6 +17,19 @@ import { createRuntime, type CliRuntime, type ProcessLike, type RuntimeOverrides
 /** Alias kept for callers: `runCli` accepts the same overrides as the runtime. */
 export type RunOptions = RuntimeOverrides;
 
+/**
+ * First non-flag token after the executable: the subcommand the user aimed at.
+ * Used to print that command's own synopsis when usage fails.
+ */
+function targetedCommandName(argv: string[]): string | undefined {
+  for (let index = 2; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === undefined || token.startsWith("-")) continue;
+    return token;
+  }
+  return undefined;
+}
+
 export function buildProgram(runtime: CliRuntime): Command {
   const program = new Command();
   program
@@ -36,6 +49,9 @@ export function buildProgram(runtime: CliRuntime): Command {
       writeErr: (chunk: string) => {
         runtime.process.stderr.write(chunk);
       },
+      // Usage errors are reported exactly once, by the CLI error serializer below,
+      // which also prints the targeted command's synopsis.
+      outputError: () => undefined,
     });
 
   registerDoctorCommand(program, runtime);
@@ -83,12 +99,28 @@ export async function runCli(
 
   const program = buildProgram(runtime);
 
+  // A command-less invocation is a usage error, not a success: reporting it before
+  // commander's auto-help keeps exit codes honest and keeps stdout JSON-clean.
+  const tokens = argv.slice(2);
+  const hasCommandToken = tokens.some((token) => !token.startsWith("-"));
+  const asksForHelpOrVersion = tokens.some((token) =>
+    ["-h", "--help", "-V", "--version"].includes(token),
+  );
+  if (!hasCommandToken && !asksForHelpOrVersion) {
+    program.outputHelp({ error: true });
+    runtime.output.usageHint();
+    runtime.output.failure(
+      new ToolError({
+        code: "VALIDATION_FAILED",
+        message: "No command given. Provide a command such as `hf image`, or run `hf --help`.",
+      }),
+      EXIT_CODES.INVALID_USAGE,
+    );
+    return EXIT_CODES.INVALID_USAGE;
+  }
+
   try {
     await program.parseAsync(argv, { from: "node" });
-    if (program.args.length === 0) {
-      program.outputHelp();
-      return EXIT_CODES.INVALID_USAGE;
-    }
     return runtime.exitCode;
   } catch (error) {
     if (error instanceof CommanderError) {
@@ -99,9 +131,16 @@ export async function runCli(
       ) {
         return EXIT_CODES.SUCCESS;
       }
-      // Invalid CLI usage is reported as exit code 2 (§27) with a typed payload.
+      // Invalid CLI usage: exit code 2 (§27), one typed payload, and the synopsis of
+      // the command the user was aiming at.
+      const commandName = targetedCommandName(argv);
+      const targeted = program.commands.find((command) => command.name() === commandName);
+      (targeted ?? program).outputHelp({ error: true });
       runtime.output.failure(
-        new ToolError({ code: "VALIDATION_FAILED", message: error.message }),
+        new ToolError({
+          code: "VALIDATION_FAILED",
+          message: error.message.replace(/^error:\s*/, ""),
+        }),
         EXIT_CODES.INVALID_USAGE,
       );
       return EXIT_CODES.INVALID_USAGE;

@@ -100,8 +100,11 @@ async function runCli(args: string[], options: RunOptions = {}): Promise<RunResu
   }
 
   const state = JSON.parse(await readFile(stateFile, "utf8")) as FakeState;
-  const parsed =
-    stdout.trim().length > 0 ? (JSON.parse(stdout.trim()) as Record<string, unknown>) : undefined;
+  const trimmed = stdout.trim();
+  // `--help` legitimately writes prose to stdout; only JSON-looking output is parsed.
+  const parsed = trimmed.startsWith("{")
+    ? (JSON.parse(trimmed) as Record<string, unknown>)
+    : undefined;
   return { code, stdout, stderr, parsed, state, cwd };
 }
 
@@ -581,6 +584,46 @@ describe("discovery, status, and usage errors", () => {
     const listed = await runCli(["characters", "list", "--json"], { cwd });
     const listedPayload = expectSingleJsonLine(listed);
     expect(listedPayload.details).toMatchObject({ total: 1, page: 1, pageSize: 20 });
+  });
+
+  it("reports a missing argument once, with the synopsis of the targeted command", async () => {
+    const result = await runCli(["status", "--json"]);
+
+    expect(result.code).toBe(2);
+    expect(result.stdout.trimEnd().split("\n")).toHaveLength(1);
+    expect(expectSingleJsonLine(result)).toMatchObject({
+      ok: false,
+      error: { code: "VALIDATION_FAILED", message: "missing required argument 'request-id'" },
+    });
+    // Help goes to stderr; the message lives in the JSON payload only.
+    expect(result.stdout).not.toContain("Usage:");
+    expect(result.stderr).toContain("Usage: hf status [options] <request-id>");
+    expect(result.stderr).not.toContain("missing required argument");
+
+    // Human mode states the failure exactly once, next to the synopsis.
+    const human = await runCli(["status"]);
+    expect(human.code).toBe(2);
+    expect(human.stdout).toBe("");
+    expect(human.stderr).toContain("Usage: hf status");
+    expect(human.stderr.match(/missing required argument/g) ?? []).toHaveLength(1);
+  });
+
+  it("treats a command-less invocation as a usage error and keeps stdout JSON-clean", async () => {
+    const result = await runCli(["--json"]);
+
+    expect(result.code).toBe(2);
+    expect(expectSingleJsonLine(result)).toMatchObject({ ok: false });
+    expect(result.stderr).toContain("Usage: hf");
+    expect(result.stderr).toContain("hf doctor --json");
+    expect(await listFiles(result.cwd)).toEqual(["provider-state.json"]);
+  });
+
+  it("still prints help to stdout and exits 0 when help is requested", async () => {
+    const result = await runCli(["--help"]);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Usage: hf");
+    expect(result.stderr).toBe("");
   });
 
   it("uses exit code 2 for invalid usage and unknown commands", async () => {
