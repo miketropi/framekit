@@ -126,6 +126,50 @@ by the SDK.
 3. Update `@higgsfield/client` to send every header it signs (or share the presign
    helper with clients so they cannot diverge).
 
+---
+
+# Second finding: SDK enum drift breaks the default video preset
+
+Independent of the upload defect, the published SDK's enum constants no longer match the
+API. `@higgsfield/client@0.2.6` exports
+`DoPModel = { LITE: "dop-lite", TURBO: "dop-turbo", STANDARD: "dop-standard" }`, but
+`POST /v1/image2video/dop` answers:
+
+```json
+{
+  "detail": [
+    {
+      "type": "enum",
+      "loc": ["body", "params", "model"],
+      "msg": "Input should be 'dop-lite', 'dop-preview' or 'dop-turbo'",
+      "input": "dop-standard"
+    }
+  ]
+}
+```
+
+So any client that follows the SDK enum sends an invalid model. `SoulSize` has the same
+problem in the other direction: the API accepts 16 resolutions, the SDK lists 13.
+
+Accepted values measured from the API's own validation responses (type-invalid probes —
+they can never be accepted, so they cannot create a billable job):
+
+| Endpoint               | Parameter          | Accepted                                                                                                                                                                                                     |
+| ---------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/v1/image2video/dop`  | `model`            | `dop-lite`, `dop-preview`, `dop-turbo`                                                                                                                                                                       |
+| `/v1/image2video/dop`  | `motions[].id`     | UUID                                                                                                                                                                                                         |
+| `/v1/text2image/soul`  | `quality`          | `720p`, `1080p`                                                                                                                                                                                              |
+| `/v1/text2image/soul`  | `batch_size`       | `1`, `4`                                                                                                                                                                                                     |
+| `/v1/text2image/soul`  | `width_and_height` | `1152x2048`, `2048x1152`, `2048x1536`, `1536x2048`, `1344x2016`, `2016x1344`, `960x1696`, `1536x1536`, `1536x1152`, `1696x960`, `1152x1536`, `1088x1632`, `1632x1088`, `1120x1680`, `1680x1120`, `2048x2048` |
+| `/v1/speak/higgsfield` | `quality`          | `high`, `mid`                                                                                                                                                                                                |
+| `/v1/speak/higgsfield` | `duration`         | `5`, `10`, `15`                                                                                                                                                                                              |
+
+**Requested fix:** republish the enums (or a `/v1/capabilities` response) so clients do not
+have to discover accepted values from 422 responses. Our adapter now validates against the
+measured sets and documents how to re-harvest them.
+
+---
+
 ## Workaround used while this is open
 
 Pass an HTTPS URL as the input instead of a local file, which skips the upload path
