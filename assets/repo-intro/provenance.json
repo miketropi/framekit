@@ -1,0 +1,29 @@
+{
+  "note": "Generated via the provider v2 model endpoint (not hf): /bytedance/seedance-2.5/image-to-video",
+  "model": "bytedance/seedance-2.5/image-to-video",
+  "requestId": "5e519e5d-1054-483d-b571-c2862558b9dc",
+  "status": "completed",
+  "remoteUrl": "https://d3u0tzju9qaucj.cloudfront.net/aadd0b49-1f57-428e-b914-27832b10d005/25f8d684-3478-412b-b8f0-a7c9a9794e75.mp4",
+  "input": {
+    "image_url": "https://raw.githubusercontent.com/miketropi/framekit/main/assets/repo-thumbnail/image-01.png",
+    "prompt": "Slow cinematic push-in across a dark studio wall: a vertical strip of photographic frames glows into place as if being a\u2026",
+    "duration": 5,
+    "resolution": "720p",
+    "bitrate_mode": "high",
+    "generate_audio": false
+  },
+  "bytes": 2754999,
+  "files": [
+    {
+      "file": "video.mp4",
+      "bytes": 2754999,
+      "sha256": "b31aa157c820fd51ca33d3f5403b78825094408cb00d0279272a3f36e7154312"
+    },
+    {
+      "file": "poster.jpg",
+      "bytes": 33498,
+      "sha256": "8504e286bc6ce1a374fea1e855fabc76984ebb6700d68c47f281fc56b9c4487e"
+    }
+  ],
+  "network": "submitted and downloaded through a one-off script; hf (V1) does not know this model path"
+}
