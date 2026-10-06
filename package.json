@@ -39,6 +39,7 @@
     "test:live:paid": "vitest run --config vitest.live.config.ts tests/live/paid",
     "hf": "tsx bin/hf.ts",
     "skills:install": "node scripts/install-skills.mjs",
+    "repro:upload": "node scripts/repro-upload-signature.mjs",
     "skills:install:project": "node scripts/install-skills.mjs --project .",
     "prepack": "pnpm build"
   },

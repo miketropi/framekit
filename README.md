@@ -354,7 +354,11 @@ If `uploads.ok` is false with a 403/`SignatureDoesNotMatch`, local-input command
 (`hf upload`, `hf video`, `hf speak`, and `hf image --reference <path>`) cannot work until
 the provider fixes the signed URL; text-to-image without a local reference is unaffected.
 Report it to Higgsfield with the `status`, `providerCode`, and `storageHost` from the
-error details.
+error details; a ready-to-send write-up with the full evidence lives in
+[`docs/upstream-upload-signature-issue.md`](docs/upstream-upload-signature-issue.md) and
+the failure is reproducible end-to-end with
+[`scripts/repro-upload-signature.mjs`](scripts/repro-upload-signature.mjs)
+(`pnpm repro:upload`, non-billable).
 
 **Workaround while it lasts:** pass an HTTPS URL instead of a local file — URL inputs skip
 uploading entirely:
