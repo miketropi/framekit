@@ -312,21 +312,38 @@ downloads, which retry a transient CDN failure so a paid result is not stranded.
 
 ### `hf status` and V1 status availability
 
-The published `@higgsfield/client` V1 SDK exposes no public status method, so the adapter
-queries the same authenticated V1 job-set route the SDK polls internally
-(`/v1/job-sets/{requestId}`) and normalizes the result. This route is provider-private: it
-never leaks through `MediaProvider`, and it is the only reason the provider holds a second
-transport.
+`hf status <request-id> --json` resolves an id through two provider-private routes, in order:
 
-If the live API does not serve that route, `hf status` reports
-`UNKNOWN_PROVIDER_ERROR` ("V1 status unavailable", sanitized) and exits 20. It never
-fabricates a status from a stale local manifest or from a `requestId` recorded on disk —
-absence of remote information is reported as absence.
+1. the authenticated V1 job-set route the SDK polls internally (`/v1/job-sets/{requestId}`)
+2. the v2 request route (`/requests/{requestId}/status`, `Authorization: Key …`), which is
+   what the web app and the v2 API use
 
-Do not confuse `hf status` (this limitation, remote-only, no local effect) with a
-**polling** `TIMEOUT` from `hf image`/`hf video`/`hf speak`, which is a different contract:
-resumability is advertised through `requestId` + `resumeWith`, and all polling traffic uses
-the same provider-private transport.
+Whichever answers, the report names its `source` and includes any result URLs that route
+reported (`details.resultUrls`), so a bare request id can yield a media URL even when no
+local manifest exists:
+
+```bash
+hf status 71fec110-5840-4a02-b43e-4b19376912f6 --json
+# {"ok":true,"status":"completed","details":{"source":"job-set",
+#   "resultUrls":[{"type":"video","url":"https://…/video.mp4"}]}}
+```
+
+Signed query parameters are stripped from those URLs before printing. If neither route
+knows the id, the error says so explicitly and names both routes — ids belonging to another
+account or workspace (for example the web app under a different login) are not visible to
+the configured API key. These routes are provider-private: they never leak through
+`MediaProvider`, and they are the only reason the provider holds a second transport.
+
+If **both** routes report the id missing, `hf status` fails with `UNKNOWN_PROVIDER_ERROR`
+(exit 20) and names both routes; if a route is unreachable rather than empty, the
+underlying provider error is surfaced instead. It never fabricates a status from a stale
+local manifest or from a `requestId` recorded on disk — absence of remote information is
+reported as absence.
+
+Do not confuse `hf status` with a **polling** `TIMEOUT` from `hf image`/`hf video`/
+`hf speak`, which is a different contract: resumability is advertised through `requestId`
+
+- `resumeWith`, and all polling traffic uses the same provider-private transport.
 
 ## Troubleshooting
 

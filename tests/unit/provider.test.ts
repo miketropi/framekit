@@ -324,6 +324,93 @@ describe("status inspection", () => {
     expect(attempts).toBe(1);
   });
 
+  it("reports the job-set route with its result URLs", async () => {
+    const harness = buildProvider({
+      httpGet: async () => ({
+        status: 200,
+        body: {
+          jobs: [
+            {
+              id: "job-1",
+              status: "completed",
+              results: { raw: { url: "https://cdn.test/video.mp4", type: "video" } },
+            },
+          ],
+        },
+      }),
+    });
+
+    await expect(harness.provider.getStatusReport("set-1")).resolves.toEqual({
+      requestId: "set-1",
+      status: "completed",
+      source: "job-set",
+      assets: [{ kind: "video", url: "https://cdn.test/video.mp4" }],
+    });
+  });
+
+  it("falls back to the v2 request route when no job set exists, and surfaces its URLs", async () => {
+    const harness = buildProvider({
+      httpGet: async (path, auth) => {
+        if (path.startsWith("/v1/job-sets/")) throw new APIError("not found", 404, {});
+        expect(auth).toBe("v2");
+        return {
+          status: 200,
+          body: {
+            status: "completed",
+            request_id: "req-1",
+            images: [{ url: "https://cdn.test/frame.png" }],
+            video: { url: "https://cdn.test/clip.mp4" },
+          },
+        };
+      },
+    });
+
+    await expect(harness.provider.getStatusReport("req-1")).resolves.toEqual({
+      requestId: "req-1",
+      status: "completed",
+      source: "request",
+      assets: [
+        { kind: "image", url: "https://cdn.test/frame.png" },
+        { kind: "video", url: "https://cdn.test/clip.mp4" },
+      ],
+    });
+    const routes = callsOf(harness.clients.calls, "httpGet");
+    expect(routes.map((call) => call.args[0])).toEqual([
+      "/v1/job-sets/req-1",
+      "/requests/req-1/status",
+    ]);
+    expect(routes[1]?.args[1]).toBe("v2");
+  });
+
+  it("names both routes when a request id exists in neither", async () => {
+    const harness = buildProvider({
+      httpGet: async () => {
+        throw new APIError("not found", 404, {});
+      },
+    });
+
+    await expect(harness.provider.getStatusReport("req-gone")).rejects.toMatchObject({
+      code: "UNKNOWN_PROVIDER_ERROR",
+      details: {
+        requestId: "req-gone",
+        routes: ["/v1/job-sets/req-gone", "/requests/req-gone/status"],
+      },
+    });
+  });
+
+  it("rejects an unknown status from the v2 route", async () => {
+    const harness = buildProvider({
+      httpGet: async (path) =>
+        path.startsWith("/v1/job-sets/")
+          ? Promise.reject(new APIError("not found", 404, {}))
+          : { status: 200, body: { status: "teleported" } },
+    });
+
+    await expect(harness.provider.getStatusReport("req-1")).rejects.toMatchObject({
+      code: "UNKNOWN_PROVIDER_ERROR",
+    });
+  });
+
   it("surfaces an unknown status from the status route", async () => {
     const harness = buildProvider({
       httpGet: async () => ({ status: 200, body: { jobs: [{ id: "job-1", status: "weird" }] } }),

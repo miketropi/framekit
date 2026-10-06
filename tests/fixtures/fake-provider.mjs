@@ -193,6 +193,18 @@ export async function createProvider() {
       bump("status");
       return "in_progress";
     },
+    async getStatusReport() {
+      bump("status");
+      if (scenario === "status-with-assets") {
+        return {
+          requestId: "fake-request-1",
+          status: "completed",
+          source: "request",
+          assets: [{ kind: "video", url: `${origin}/clip/video.mp4?X-Amz-Signature=deadbeef` }],
+        };
+      }
+      return { requestId: "fake-request-1", status: "in_progress", source: "job-set", assets: [] };
+    },
     async listMotions() {
       const calls = bump("motions");
       if (calls <= motionsCallsBeforeSuccess) {

@@ -20,6 +20,7 @@ import type {
   Capability,
   GenerationResult,
   GenerationStatus,
+  GenerationStatusReport,
   ProviderGenerationRequest,
   RemoteAsset,
 } from "../../domain/generation";
@@ -28,7 +29,7 @@ import type { MediaProvider, ProviderName } from "../../domain/media-provider";
 import type { Clock, RandomSource, Sleeper } from "../../domain/runtime";
 import type { HiggsfieldSdk, V1HttpClient } from "./client";
 import { jobSetRoute } from "./endpoints";
-import { isSafeToRetry, withRequestId } from "../../domain/errors";
+import { isSafeToRetry, toToolError, withRequestId } from "../../domain/errors";
 import { normalizeProviderError } from "./errors";
 import { mapGenerationRequest, requiresDiscovery } from "./mapper";
 import {
@@ -36,6 +37,7 @@ import {
   jobSetSchema,
   motionListSchema,
   parsePayload,
+  requestStatusSchema,
   soulIdPageSchema,
   soulIdSchema,
   styleListSchema,
@@ -361,7 +363,85 @@ export class HiggsfieldV1Provider implements MediaProvider {
   // --------------------------------------------------------------- status
 
   async getStatus(requestId: string): Promise<GenerationStatus> {
-    return this.aggregateStatus(await this.fetchJobs(requestId));
+    return (await this.getStatusReport(requestId)).status;
+  }
+
+  /**
+   * Status with provenance and result URLs.
+   *
+   * V1 job sets are tried first. A 404 there is common for requests created through the
+   * web app or the v2 API, so the v2 request route is tried next; its payload carries
+   * `images[].url` / `video.url`, which lets a bare request id yield a media URL even
+   * when no local manifest exists.
+   */
+  async getStatusReport(requestId: string): Promise<GenerationStatusReport> {
+    try {
+      const jobs = await this.fetchJobs(requestId);
+      const status = this.aggregateStatus(jobs);
+      return {
+        requestId,
+        status,
+        source: "job-set",
+        assets: isTerminalStatus(status) ? this.collectAssets(jobs, "generic") : [],
+      };
+    } catch (error) {
+      const normalized = toToolError(error);
+      if (!this.isNotFound(normalized)) throw normalized;
+    }
+
+    return this.fetchRequestStatus(requestId);
+  }
+
+  private isNotFound(error: ToolError): boolean {
+    const details = error.details as { status?: unknown } | undefined;
+    return error.code === "UNKNOWN_PROVIDER_ERROR" && details?.status === 404;
+  }
+
+  private async fetchRequestStatus(requestId: string): Promise<GenerationStatusReport> {
+    let response;
+    try {
+      response = await withRetry(
+        async () => {
+          try {
+            return await this.http.get(`/requests/${encodeURIComponent(requestId)}/status`, {
+              auth: "v2",
+            });
+          } catch (error) {
+            throw normalizeProviderError(
+              error,
+              `Higgsfield status request for ${requestId} failed.`,
+            );
+          }
+        },
+        this.retryPolicy,
+        this.retryDependencies,
+        isSafeToRetry,
+      );
+    } catch (error) {
+      const normalized = toToolError(error);
+      if (this.isNotFound(normalized)) {
+        throw new ToolError({
+          code: "UNKNOWN_PROVIDER_ERROR",
+          message:
+            `No request ${requestId} exists in this account: the V1 job-set route and the v2 request ` +
+            "route both report it missing. Ids shown in a different account or workspace (for example " +
+            "the web app under another login) are not visible to this API key.",
+          details: {
+            requestId,
+            routes: [`/v1/job-sets/${requestId}`, `/requests/${requestId}/status`],
+          },
+        });
+      }
+      throw normalized;
+    }
+
+    const payload = parsePayload(requestStatusSchema, response.body, "request status");
+    const status = this.normalizeJobStatus(payload.status);
+    const assets: RemoteAsset[] = [];
+    for (const image of payload.images ?? []) assets.push({ kind: "image", url: image.url });
+    if (payload.video?.url !== undefined) assets.push({ kind: "video", url: payload.video.url });
+
+    return { requestId, status, source: "request", assets };
   }
 
   // ------------------------------------------------------------ discovery

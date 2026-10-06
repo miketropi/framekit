@@ -743,6 +743,27 @@ describe("discovery, status, and usage errors", () => {
     expect(await listFiles(result.cwd)).toEqual(["provider-state.json"]);
   });
 
+  it("surfaces result URLs from a status query, without the signature", async () => {
+    const result = await runCli(["status", "fake-request-1", "--json"], {
+      scenario: "status-with-assets",
+    });
+    const payload = expectSingleJsonLine(result);
+
+    expect(result.code).toBe(0);
+    expect(payload).toMatchObject({ ok: true, status: "completed", requestId: "fake-request-1" });
+    const details = payload.details as {
+      source: string;
+      resultUrls: { type: string; url: string }[];
+    };
+    expect(details.source).toBe("request");
+    expect(details.resultUrls).toHaveLength(1);
+    expect(details.resultUrls[0]?.type).toBe("video");
+    expect(details.resultUrls[0]?.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/clip\/video\.mp4$/);
+    expect(JSON.stringify(details)).not.toContain("deadbeef");
+    expect(result.state.generate).toBeUndefined();
+    expect(await listFiles(result.cwd)).toEqual(["provider-state.json"]);
+  });
+
   it("creates and lists character references", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "hf-cli-char-"));
     await writeFile(path.join(cwd, "face.png"), PNG_1PX);

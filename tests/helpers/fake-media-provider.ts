@@ -10,6 +10,7 @@ import type {
 import type {
   GenerationResult,
   GenerationStatus,
+  GenerationStatusReport,
   ProviderGenerationRequest,
 } from "../../src/domain/generation";
 import type { MediaProvider } from "../../src/domain/media-provider";
@@ -20,6 +21,7 @@ export interface FakeProviderScript {
   generate?: (request: ProviderGenerationRequest, callIndex: number) => Promise<GenerationResult>;
   upload?: (request: UploadRequest) => Promise<UploadedAsset>;
   getStatus?: (requestId: string) => Promise<GenerationStatus>;
+  getStatusReport?: (requestId: string) => Promise<GenerationStatusReport>;
   listMotions?: () => Promise<MotionPreset[]>;
   listStyles?: () => Promise<StylePreset[]>;
   createCharacter?: (request: CharacterReferenceRequest) => Promise<CharacterReference>;
@@ -71,6 +73,14 @@ export function createFakeProvider(script: FakeProviderScript = {}): FakeProvide
       if (script.getStatus === undefined) throw new Error("fake getStatus not configured");
       return script.getStatus(requestId);
     },
+    ...(script.getStatusReport === undefined
+      ? {}
+      : {
+          async getStatusReport(requestId: string) {
+            calls.getStatus.push(requestId);
+            return script.getStatusReport?.(requestId) as Promise<GenerationStatusReport>;
+          },
+        }),
     async listMotions() {
       calls.listMotions += 1;
       return (script.listMotions ?? notConfigured("listMotions"))();

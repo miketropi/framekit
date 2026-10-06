@@ -125,6 +125,19 @@ export type ProviderGenerationRequest =
   | SpeechToVideoProviderRequest
   | GenericProviderRequest;
 
+/**
+ * Richer status view: which provider route answered, plus any result URLs it reported.
+ * V1 job sets expose results, and the v2 request route returns `images[].url` /
+ * `video.url`, so a status query can recover a result URL without a manifest.
+ */
+export interface GenerationStatusReport {
+  requestId: string;
+  status: GenerationStatus;
+  /** Provider route that produced the report; absent when a provider has no richer lookup. */
+  source?: "job-set" | "request";
+  assets: RemoteAsset[];
+}
+
 /** Minimal job view used for diagnostics; never a V1 `JobSet`. */
 export interface JobSummary {
   id: string;

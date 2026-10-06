@@ -26,6 +26,14 @@ export const jobListSchema = z.object({
   jobs: z.array(jobSchema),
 });
 
+/** v2 request-status payload: `{ status, request_id, images: [{url}], video: {url} }`. */
+export const requestStatusSchema = z.object({
+  status: z.string().min(1),
+  request_id: z.string().optional(),
+  images: z.array(z.object({ url: z.string().min(1) })).optional(),
+  video: z.object({ url: z.string().min(1) }).nullish(),
+});
+
 export const motionSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),

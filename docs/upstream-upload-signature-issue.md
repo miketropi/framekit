@@ -195,3 +195,25 @@ hf doctor --check-upload --json      # non-billable probe of link + PUT + read-b
 ```
 
 See the "Troubleshooting" section of the README for the diagnostic order.
+
+---
+
+# Appendix: reconciling a dashboard transaction id (probed 2026-10-06)
+
+A dashboard entry for a video generation, id `9329be0e-f648-4056-bc2e-622da7e01543`, could
+not be resolved from this machine. Every route reachable with the configured API key was
+tried, and the key was proven valid first, so the negative results are meaningful:
+
+| Route / space                                          | Result                                                                                                                        |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `GET /v1/job-sets/{id}` (v1 headers)                   | `404 Job set not found`                                                                                                       |
+| `GET /v1/job-sets/{id}` (v2 `Authorization: Key …`)    | `404 Job set not found`                                                                                                       |
+| `GET /requests/{id}/status` (v2)                       | `404 Not found`, while a bogus secret answers `401 Invalid credentials` — so auth passed and the id is absent from that space |
+| `GET` / `POST /v1/requests/{id}/status`                | `405 Method Not Allowed` / `404 model_not_found`                                                                              |
+| Local manifests, `.cache/higgsfield`, session history  | id absent                                                                                                                     |
+| OMP MCP gateway (`jobs.get`, `jobs.list`, `media.get`) | `JOB_NOT_FOUND`; the tenant's job list is empty; `media.get` answers `ACCESS_DENIED: not available for this tenant`           |
+| Every generation id this machine created               | does not match (4 keyframes, thumbnail, smoke video)                                                                          |
+
+Conclusion: the transaction belongs to a different account/workspace than the API key used
+here, or it is a ledger entry whose result asset is no longer retrievable. Requested from
+support: locate the asset behind that id, or confirm whether the stored result expired.

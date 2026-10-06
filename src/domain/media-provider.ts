@@ -7,7 +7,12 @@ import type {
   UploadRequest,
   UploadedAsset,
 } from "./asset";
-import type { GenerationResult, GenerationStatus, ProviderGenerationRequest } from "./generation";
+import type {
+  GenerationResult,
+  GenerationStatus,
+  GenerationStatusReport,
+  ProviderGenerationRequest,
+} from "./generation";
 
 export type ProviderName = "higgsfield-v1";
 
@@ -27,6 +32,12 @@ export interface MediaProvider {
   generate(request: ProviderGenerationRequest): Promise<GenerationResult>;
   upload(request: UploadRequest): Promise<UploadedAsset>;
   getStatus(requestId: string): Promise<GenerationStatus>;
+  /**
+   * Optional richer status lookup. Providers that can report result URLs alongside the
+   * status implement it; `hf status` uses it when present so a request id can yield a
+   * media URL even when no local manifest exists.
+   */
+  getStatusReport?(requestId: string): Promise<GenerationStatusReport>;
   listMotions(): Promise<MotionPreset[]>;
   listStyles(): Promise<StylePreset[]>;
   createCharacter(request: CharacterReferenceRequest): Promise<CharacterReference>;

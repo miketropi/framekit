@@ -13,7 +13,7 @@ export interface FakeSdkScript {
   styles?: () => Promise<unknown>;
   createSoulId?: (data: unknown, withPolling?: boolean) => Promise<unknown>;
   listSoulIds?: (page?: number, pageSize?: number) => Promise<unknown>;
-  httpGet?: (path: string) => Promise<{ status: number; body: unknown }>;
+  httpGet?: (path: string, auth: "v1" | "v2") => Promise<{ status: number; body: unknown }>;
 }
 
 export interface FakeClients {
@@ -70,10 +70,11 @@ export function createFakeClients(script: FakeSdkScript = {}): FakeClients {
   };
 
   const http: V1HttpClient = {
-    async get(path) {
-      record("httpGet", path);
+    async get(path, options) {
+      const auth = options?.auth ?? "v1";
+      record("httpGet", path, auth);
       if (script.httpGet === undefined) throw new Error("fake httpGet not configured");
-      return script.httpGet(path);
+      return script.httpGet(path, auth);
     },
   };
 

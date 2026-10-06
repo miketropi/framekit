@@ -1,5 +1,6 @@
 import { ToolError } from "../domain/errors";
 import type { GenerationStatus } from "../domain/generation";
+import type { RemoteAsset } from "../domain/generation";
 import type { MediaProvider } from "../domain/media-provider";
 
 /**
@@ -11,6 +12,10 @@ import type { MediaProvider } from "../domain/media-provider";
 export interface StatusReport {
   requestId: string;
   status: GenerationStatus;
+  /** Which provider route answered, when the provider reports it. */
+  source?: "job-set" | "request";
+  /** Result URLs the provider reported, if any. */
+  assets: RemoteAsset[];
 }
 
 export class StatusService {
@@ -27,6 +32,15 @@ export class StatusService {
         message: "A request id is required.",
       });
     }
-    return { requestId, status: await this.provider.getStatus(requestId) };
+    if (this.provider.getStatusReport !== undefined) {
+      const report = await this.provider.getStatusReport(requestId);
+      return {
+        requestId: report.requestId,
+        status: report.status,
+        source: report.source,
+        assets: report.assets,
+      };
+    }
+    return { requestId, status: await this.provider.getStatus(requestId), assets: [] };
   }
 }

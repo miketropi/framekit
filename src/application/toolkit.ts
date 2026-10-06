@@ -138,6 +138,13 @@ export function createLazyProvider(
     listStyles: () => resolve().listStyles(),
     createCharacter: (request) => resolve().createCharacter(request),
     listCharacters: (page, pageSize) => resolve().listCharacters(page, pageSize),
+    // Optional capability: forward it when the real provider implements it, otherwise
+    // synthesize the plain status so callers see one consistent shape.
+    getStatusReport: async (requestId) => {
+      const provider = resolve();
+      if (provider.getStatusReport !== undefined) return provider.getStatusReport(requestId);
+      return { requestId, status: await provider.getStatus(requestId), assets: [] };
+    },
   };
 }
 

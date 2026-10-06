@@ -36,8 +36,11 @@ export interface V1HttpResponse {
   body: unknown;
 }
 
+export type V1AuthMode = "v1" | "v2";
+
 export interface V1HttpClient {
-  get(path: string): Promise<V1HttpResponse>;
+  /** `auth: "v2"` uses the v2 `Authorization: Key KEY_ID:KEY_SECRET` header. */
+  get(path: string, options?: { auth?: V1AuthMode }): Promise<V1HttpResponse>;
 }
 
 export interface HiggsfieldClientBundle {
@@ -78,7 +81,7 @@ export function createV1HttpClient(options: V1HttpClientOptions): V1HttpClient {
   const fetchImpl = options.fetchImpl ?? fetch;
 
   return {
-    async get(path: string): Promise<V1HttpResponse> {
+    async get(path: string, requestOptions: { auth?: V1AuthMode } = {}): Promise<V1HttpResponse> {
       const base = options.baseUrl.endsWith("/") ? options.baseUrl : `${options.baseUrl}/`;
       const url = new URL(path.replace(/^\//, ""), base).toString();
       const controller = new AbortController();
@@ -89,11 +92,17 @@ export function createV1HttpClient(options: V1HttpClientOptions): V1HttpClient {
       try {
         response = await fetchImpl(url, {
           method: "GET",
-          headers: {
-            "hf-api-key": options.apiKey,
-            "hf-secret": options.apiSecret,
-            accept: "application/json",
-          },
+          headers:
+            requestOptions.auth === "v2"
+              ? {
+                  authorization: `Key ${options.apiKey}:${options.apiSecret}`,
+                  accept: "application/json",
+                }
+              : {
+                  "hf-api-key": options.apiKey,
+                  "hf-secret": options.apiSecret,
+                  accept: "application/json",
+                },
           signal: controller.signal,
         });
         // The body is read inside the same deadline: a stalled status response must
