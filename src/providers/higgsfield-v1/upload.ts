@@ -2,7 +2,7 @@ import type { UploadRequest, UploadedAsset } from "../../domain/asset";
 import { ToolError } from "../../domain/errors";
 import type { HiggsfieldSdk } from "./client";
 import { isSafeToRetry } from "../../domain/errors";
-import { normalizeProviderError } from "./errors";
+import { normalizeUploadFailure } from "./errors";
 import { withRetry, type RetryDependencies, type RetryPolicy } from "../../domain/retry";
 
 /**
@@ -15,6 +15,8 @@ export interface V1UploaderOptions {
   sdk: HiggsfieldSdk;
   retryPolicy: RetryPolicy;
   dependencies: RetryDependencies;
+  /** Used to tell a provider-API failure from a signed-storage failure. */
+  apiBaseUrl: string;
 }
 
 const IMAGE_FORMAT_BY_MIME: Record<string, "png" | "jpeg" | "webp"> = {
@@ -37,13 +39,9 @@ export function createV1Uploader(options: V1UploaderOptions): V1UploadFunction {
           }
           return await options.sdk.upload(Buffer.from(request.data), request.contentType);
         } catch (error) {
-          const normalized = normalizeProviderError(error, "Upload failed.");
-          throw new ToolError({
-            code: normalized.code === "UNKNOWN_PROVIDER_ERROR" ? "UPLOAD_FAILED" : normalized.code,
-            message: `Upload of ${request.filename} failed: ${normalized.message}`,
-            details: normalized.details,
-            retryable: normalized.retryable,
-            cause: error,
+          throw normalizeUploadFailure(error, {
+            apiBaseUrl: options.apiBaseUrl,
+            filename: request.filename,
           });
         }
       },

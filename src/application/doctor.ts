@@ -1,6 +1,7 @@
 import path from "node:path";
 import { describeCredentialProblem, hasCredentials, type ToolConfig } from "../config/env";
-import { ToolError, isToolError } from "../domain/errors";
+import { ToolError, isToolError, toToolError } from "../domain/errors";
+import { sha256Hex } from "./fingerprint";
 import type { MediaProvider } from "../domain/media-provider";
 import { SUPPORTED_PROVIDERS } from "../domain/media-provider";
 import { scrubUrlForStorage } from "../domain/redact";
@@ -39,6 +40,7 @@ export interface DoctorReport {
   };
   outputDirectory: { path: string; writable: boolean; error?: string };
   discovery?: { ok: boolean; motions: number };
+  uploads?: { ok: boolean; reachable?: boolean; status?: number; providerCode?: string };
   checks: DoctorCheck[];
 }
 
@@ -48,6 +50,91 @@ export interface DoctorServiceOptions {
   output?: string;
   /** Resolved lazily so a credential-free doctor run never constructs a provider. */
   getProvider: () => Promise<MediaProvider>;
+  /**
+   * Uploads a 1x1 PNG and checks that the returned public URL is reachable.
+   * Non-billable, off by default: without it, doctor never uploads anything.
+   */
+  checkUpload?: boolean;
+  fetchImpl?: typeof fetch;
+}
+
+/** Smallest valid PNG, used only by the opt-in upload probe. */
+const PROBE_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAwAB/AL+2gAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+interface UploadProbe {
+  report: DoctorReport["uploads"] & { ok: boolean };
+  detail: string;
+  error?: ToolError;
+}
+
+/**
+ * Probes the whole upload path (request signed URL, PUT bytes, read back the public
+ * URL). This is the only way to detect a storage-level rejection, which the API cannot
+ * report: requesting the link succeeds while the upload itself may not.
+ */
+async function probeUpload(provider: MediaProvider, fetchImpl: typeof fetch): Promise<UploadProbe> {
+  const sha256 = sha256Hex(PROBE_PNG);
+  let url: string;
+  try {
+    const uploaded = await provider.upload({
+      data: PROBE_PNG,
+      contentType: "image/png",
+      filename: "hf-doctor-probe.png",
+      sha256,
+    });
+    url = uploaded.url;
+  } catch (error) {
+    const toolError = toToolError(error);
+    return {
+      report: {
+        ok: false,
+        ...(typeof toolError.details === "object" && toolError.details !== null
+          ? pickUploadDetails(toolError.details)
+          : {}),
+      },
+      detail: toolError.message,
+      error: toolError,
+    };
+  }
+
+  try {
+    const head = await fetchImpl(url, { method: "HEAD" });
+    return {
+      report: { ok: head.ok, reachable: head.ok, status: head.status },
+      detail: head.ok
+        ? `upload reached storage and the public URL responds (${head.status})`
+        : `uploaded, but the public URL responded with HTTP ${head.status}`,
+      ...(head.ok
+        ? {}
+        : {
+            error: new ToolError({
+              code: "UPLOAD_FAILED",
+              message: `Public upload URL responded with HTTP ${head.status}.`,
+            }),
+          }),
+    };
+  } catch (error) {
+    return {
+      report: { ok: false, reachable: false },
+      detail: `uploaded, but the public URL could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      error: new ToolError({
+        code: "UPLOAD_FAILED",
+        message: "Uploaded asset is not readable.",
+        cause: error,
+      }),
+    };
+  }
+}
+
+function pickUploadDetails(details: unknown): { status?: number; providerCode?: string } {
+  const like = details as { status?: unknown; providerCode?: unknown };
+  return {
+    ...(typeof like.status === "number" ? { status: like.status } : {}),
+    ...(typeof like.providerCode === "string" ? { providerCode: like.providerCode } : {}),
+  };
 }
 
 export async function runDoctor(options: DoctorServiceOptions): Promise<DoctorReport> {
@@ -137,7 +224,28 @@ export async function runDoctor(options: DoctorServiceOptions): Promise<DoctorRe
       ok: true,
       detail: `discovery reachable (${motions.length} motions)`,
     });
+
+    if (options.checkUpload === true) {
+      const upload = await probeUpload(provider, options.fetchImpl ?? fetch);
+      report.uploads = upload.report;
+      report.checks.push({
+        name: "uploads",
+        ok: upload.report.ok,
+        detail: upload.detail,
+      });
+      if (!upload.report.ok) {
+        throw new ToolError({
+          code: upload.error?.code ?? "UPLOAD_FAILED",
+          message: upload.error?.message ?? upload.detail,
+          details: { ...report, providerError: upload.error?.toJSON() },
+          retryable: upload.error?.retryable ?? false,
+        });
+      }
+    }
   } catch (error) {
+    if (isToolError(error) && error.details !== undefined && error.code === "UPLOAD_FAILED") {
+      throw error;
+    }
     const toolError = isToolError(error)
       ? error
       : new ToolError({

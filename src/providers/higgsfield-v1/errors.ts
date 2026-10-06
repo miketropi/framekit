@@ -73,6 +73,98 @@ function messageOf(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Where a failed upload actually failed.
+ *
+ * The SDK raises one error class for both the provider API and the signed storage URL.
+ * `unknown` means the transport carried no request metadata, in which case the API
+ * taxonomy is preserved rather than guessed.
+ */
+export type UploadFailureStage = "api" | "storage" | "unknown";
+
+export function uploadFailureStage(error: unknown, apiBaseUrl: string): UploadFailureStage {
+  const config = (error as { config?: { url?: unknown; baseURL?: unknown } }).config;
+  if (config === undefined) return "unknown";
+  const requestUrl = typeof config.url === "string" ? config.url : "";
+  const baseUrl = typeof config.baseURL === "string" ? config.baseURL : "";
+  if (requestUrl === "" && baseUrl === "") return "unknown";
+  const target = requestUrl.startsWith("http") ? requestUrl : `${baseUrl}${requestUrl}`;
+  try {
+    return new URL(target).host === new URL(apiBaseUrl).host ? "api" : "storage";
+  } catch {
+    return "unknown";
+  }
+}
+
+/** Extract the storage error code (e.g. SignatureDoesNotMatch) from an S3 XML body. */
+export function storageErrorCode(body: unknown): string | undefined {
+  if (typeof body !== "string") return undefined;
+  const match = /<Code>([^<]+)<\/Code>/.exec(body);
+  return match?.[1];
+}
+
+export interface UploadFailureContext {
+  apiBaseUrl: string;
+  filename: string;
+}
+
+/**
+ * Normalize a failed upload.
+ *
+ * Failures from the provider API keep the API taxonomy (auth, credits, validation).
+ * Failures from the signed storage URL become UPLOAD_FAILED with the storage status,
+ * host, and provider error code, because a storage rejection is not an account state
+ * and must not be reported as one.
+ */
+export function normalizeUploadFailure(error: unknown, context: UploadFailureContext): ToolError {
+  const normalized = normalizeProviderError(error, `Upload of ${context.filename} failed.`);
+  if (uploadFailureStage(error, context.apiBaseUrl) !== "storage") {
+    return normalized.code === "UNKNOWN_PROVIDER_ERROR"
+      ? new ToolError({
+          code: "UPLOAD_FAILED",
+          message: `Upload of ${context.filename} failed: ${normalized.message}`,
+          details: normalized.details,
+          retryable: normalized.retryable,
+          cause: error,
+        })
+      : normalized;
+  }
+
+  const like = error as {
+    config?: { url?: unknown };
+    response?: { status?: unknown; data?: unknown };
+  };
+  const status = typeof like.response?.status === "number" ? like.response.status : undefined;
+  const requestUrl = typeof like.config?.url === "string" ? like.config.url : "";
+  let storageHost = "storage";
+  try {
+    storageHost = new URL(requestUrl).host;
+  } catch {
+    // Keep the generic label when the URL is unavailable.
+  }
+  const providerCode = storageErrorCode(like.response?.data);
+  const retryable = status !== undefined && (status === 408 || status === 429 || status >= 500);
+  const rejection = [status === undefined ? undefined : `HTTP ${status}`, providerCode]
+    .filter((part) => part !== undefined)
+    .join(", ");
+
+  return new ToolError({
+    code: "UPLOAD_FAILED",
+    message:
+      `Upload of ${context.filename} was rejected by the provider's storage endpoint` +
+      `${rejection === "" ? "" : ` (${rejection})`}. ` +
+      "This is a storage-level rejection of the signed upload URL, not an account or credits problem.",
+    details: {
+      stage: "signed-url-put",
+      ...(status === undefined ? {} : { status }),
+      ...(providerCode === undefined ? {} : { providerCode }),
+      storageHost,
+    },
+    retryable,
+    cause: error,
+  });
+}
+
 /** Map an HTTP status to a normalized error, used by the adapter's own fetch paths. */
 export function toolErrorFromHttpStatus(
   status: number,

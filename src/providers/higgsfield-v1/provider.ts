@@ -138,6 +138,7 @@ export class HiggsfieldV1Provider implements MediaProvider {
       sdk: options.sdk,
       retryPolicy: this.retryPolicy,
       dependencies: this.retryDependencies,
+      apiBaseUrl: options.config.apiBaseUrl,
     });
   }
 

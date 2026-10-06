@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { retryDelayMs, withRetry } from "../../src/domain/retry";
 import {
   normalizeProviderError,
+  normalizeUploadFailure,
+  storageErrorCode,
   toolErrorFromHttpStatus,
+  uploadFailureStage,
 } from "../../src/providers/higgsfield-v1/errors";
 import { ToolError, isSafeToRetry, toToolError } from "../../src/domain/errors";
 import { FakeClock, RecordingSleeper } from "../helpers/clock";
@@ -116,6 +119,66 @@ describe("provider error normalization", () => {
     expect(normalizeProviderError(new Error("mystery"))).toMatchObject({
       code: "UNKNOWN_PROVIDER_ERROR",
     });
+  });
+
+  it("separates a provider-API failure from a signed-storage failure", () => {
+    const apiBaseUrl = "https://api.higgsfield.ai";
+    const signedUrl =
+      "https://fnf-api-input-prod.s3.amazonaws.com/tenant/abc.png?X-Amz-Signature=deadbeef";
+
+    // A 403 from the API is an account/permission state.
+    const fromApi = {
+      message: "Request failed with status code 403",
+      config: { url: "/files/generate-upload-url", baseURL: apiBaseUrl },
+      response: { status: 403, data: {} },
+    };
+    expect(uploadFailureStage(fromApi, apiBaseUrl)).toBe("api");
+    expect(normalizeUploadFailure(fromApi, { apiBaseUrl, filename: "ref.png" })).toMatchObject({
+      code: "INSUFFICIENT_CREDITS",
+      retryable: false,
+    });
+
+    // A 403 from the signed storage URL is a storage rejection, never a credit state.
+    const fromStorage = {
+      message: "Request failed with status code 403",
+      config: { url: signedUrl },
+      response: {
+        status: 403,
+        data: "<Error><Code>SignatureDoesNotMatch</Code><Message>...</Message></Error>",
+      },
+    };
+    expect(uploadFailureStage(fromStorage, apiBaseUrl)).toBe("storage");
+    // No request metadata: never guess, keep the API taxonomy.
+    expect(uploadFailureStage(new Error("mystery"), apiBaseUrl)).toBe("unknown");
+    const unknownStage = normalizeUploadFailure(new Error("mystery"), {
+      apiBaseUrl,
+      filename: "ref.png",
+    });
+    expect(unknownStage.code).toBe("UPLOAD_FAILED");
+    // Crucially, an unknown transport is not dressed up as a storage rejection.
+    expect(unknownStage.details).not.toMatchObject({ stage: "signed-url-put" });
+    const storageError = normalizeUploadFailure(fromStorage, { apiBaseUrl, filename: "ref.png" });
+    expect(storageError).toMatchObject({
+      code: "UPLOAD_FAILED",
+      retryable: false,
+      details: {
+        stage: "signed-url-put",
+        status: 403,
+        providerCode: "SignatureDoesNotMatch",
+        storageHost: "fnf-api-input-prod.s3.amazonaws.com",
+      },
+    });
+    expect(storageError.message).toContain("not an account or credits problem");
+
+    // Transient storage failures stay retryable; provider codes are parsed from XML.
+    expect(storageErrorCode("<Error><Code>SlowDown</Code></Error>")).toBe("SlowDown");
+    expect(storageErrorCode({})).toBeUndefined();
+    expect(
+      normalizeUploadFailure(
+        { config: { url: signedUrl }, response: { status: 503, data: "" } },
+        { apiBaseUrl, filename: "ref.png" },
+      ),
+    ).toMatchObject({ code: "UPLOAD_FAILED", retryable: true });
   });
 
   it("passes ToolErrors through unchanged", () => {

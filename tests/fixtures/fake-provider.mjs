@@ -168,6 +168,20 @@ export async function createProvider() {
     async upload(request) {
       bump("upload");
       throwScenarioError();
+      if (scenario === "upload-storage-rejected") {
+        // Mirrors the real upstream failure: the API issues a signed URL that storage
+        // rejects (S3 SignatureDoesNotMatch), which must never read as "no credits".
+        throw new ToolError({
+          code: "UPLOAD_FAILED",
+          message:
+            "Upload of " +
+            request.filename +
+            " was rejected by the provider's storage endpoint (HTTP 403, SignatureDoesNotMatch). " +
+            "This is a storage-level rejection of the signed upload URL, not an account or credits problem.",
+          details: { stage: "signed-url-put", status: 403, providerCode: "SignatureDoesNotMatch" },
+          retryable: false,
+        });
+      }
       return {
         url: `https://cdn.test/${request.sha256}.png`,
         contentType: request.contentType,

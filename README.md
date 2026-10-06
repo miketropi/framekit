@@ -328,6 +328,41 @@ Do not confuse `hf status` (this limitation, remote-only, no local effect) with 
 resumability is advertised through `requestId` + `resumeWith`, and all polling traffic uses
 the same provider-private transport.
 
+## Troubleshooting
+
+### `UPLOAD_FAILED` with a storage signature error
+
+```
+hf video --input ./keyframes/shot-01.png …
+→ UPLOAD_FAILED (exit 40)
+   "Upload of shot-01.png was rejected by the provider's storage endpoint
+    (HTTP 403, SignatureDoesNotMatch). This is a storage-level rejection of the signed
+    upload URL, not an account or credits problem."
+   details: { stage: "signed-url-put", status: 403, providerCode: "SignatureDoesNotMatch",
+              storageHost: "…s3.amazonaws.com" }
+```
+
+This is an upstream condition, not an account state: the provider's
+`POST /files/generate-upload-url` returns **200** with a signed URL that its own storage
+then rejects, before any credits are involved. Diagnostic order:
+
+```bash
+hf doctor --check-upload --json    # non-billable: link + 67-byte PUT + read back
+```
+
+If `uploads.ok` is false with a 403/`SignatureDoesNotMatch`, local-input commands
+(`hf upload`, `hf video`, `hf speak`, and `hf image --reference <path>`) cannot work until
+the provider fixes the signed URL; text-to-image without a local reference is unaffected.
+Report it to Higgsfield with the `status`, `providerCode`, and `storageHost` from the
+error details.
+
+**Workaround while it lasts:** pass an HTTPS URL instead of a local file — URL inputs skip
+uploading entirely:
+
+```bash
+hf video --input https://raw.githubusercontent.com/<owner>/<repo>/<branch>/keyframe.png   --prompt "…" --preset cinematic --output assets/shot-01 --json
+```
+
 ### Where `.env` is looked up
 
 `hf` reads `.env` from the **current working directory** (or the path in `HF_ENV_FILE`).

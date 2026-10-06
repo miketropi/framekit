@@ -55,6 +55,63 @@ describe("doctor workflow", () => {
     expect(report.checks.every((check) => check.ok)).toBe(true);
   });
 
+  it("probes the upload path only when asked, and reports a storage rejection distinctly", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "hf-doctor-"));
+
+    const healthy = createFakeProvider({
+      listMotions: async () => [{ id: "m1", name: "Zoom In" }],
+      upload: async (request) => ({
+        url: "https://cdn.test/probe.png",
+        contentType: request.contentType,
+        sha256: request.sha256,
+        bytes: request.data.byteLength,
+      }),
+    });
+
+    const untouched = await runDoctor({
+      config: configWithUserinfo,
+      cwd,
+      getProvider: async () => healthy.provider,
+    });
+    expect(untouched.uploads).toBeUndefined();
+    expect(healthy.calls.upload).toHaveLength(0);
+
+    const probed = await runDoctor({
+      config: configWithUserinfo,
+      cwd,
+      checkUpload: true,
+      getProvider: async () => healthy.provider,
+      fetchImpl: async () => new Response("", { status: 200 }),
+    });
+    expect(probed.uploads).toEqual({ ok: true, reachable: true, status: 200 });
+    expect(healthy.calls.upload).toHaveLength(1);
+    expect(healthy.calls.upload[0]).toMatchObject({ contentType: "image/png" });
+
+    const rejected = createFakeProvider({
+      listMotions: async () => [],
+      upload: async () => {
+        throw new ToolError({
+          code: "UPLOAD_FAILED",
+          message: "rejected by the provider's storage endpoint (HTTP 403, SignatureDoesNotMatch)",
+          details: { stage: "signed-url-put", status: 403, providerCode: "SignatureDoesNotMatch" },
+        });
+      },
+    });
+
+    const error = await runDoctor({
+      config: configWithUserinfo,
+      cwd,
+      checkUpload: true,
+      getProvider: async () => rejected.provider,
+    }).catch((failure: unknown) => failure);
+
+    expect((error as ToolError).code).toBe("UPLOAD_FAILED");
+    expect((error as ToolError).message).toContain("SignatureDoesNotMatch");
+    expect((error as ToolError).details).toMatchObject({
+      uploads: { ok: false, status: 403, providerCode: "SignatureDoesNotMatch" },
+    });
+  });
+
   it("surfaces a provider failure with the report attached and never generates", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "hf-doctor-"));
     const fake = createFakeProvider({

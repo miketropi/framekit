@@ -4,6 +4,7 @@ import { executeAction, requireToolkit, type CliRuntime } from "../runtime";
 
 interface DoctorCommandOptions {
   output?: string;
+  checkUpload: boolean;
   json?: boolean;
 }
 
@@ -28,6 +29,11 @@ export function registerDoctorCommand(program: Command, runtime: CliRuntime): vo
     .command("doctor")
     .description("Check runtime, credentials, provider support, and output writability.")
     .option("--output <dir>", "directory to probe for writability (defaults to the cwd)")
+    .option(
+      "--check-upload",
+      "also probe the upload path with a 1x1 PNG (non-billable; doctor never uploads otherwise)",
+      false,
+    )
     .option("--json", "write one JSON document to stdout")
     .action(async (options: DoctorCommandOptions) => {
       await executeAction(runtime, async () => {
@@ -35,6 +41,7 @@ export function registerDoctorCommand(program: Command, runtime: CliRuntime): vo
           config: runtime.config,
           cwd: runtime.cwd,
           ...(options.output === undefined ? {} : { output: options.output }),
+          checkUpload: options.checkUpload,
           getProvider: async () => (await requireToolkit(runtime)).provider,
         });
         return {

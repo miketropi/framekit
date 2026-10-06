@@ -575,6 +575,60 @@ describe("terminal and failure outcomes", () => {
     });
   }
 
+  it("reports a storage-level upload rejection as UPLOAD_FAILED, never as credits", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "hf-cli-upload-"));
+    await writeFile(path.join(cwd, "keyframe.png"), PNG_1PX);
+
+    const video = await runCli(
+      [
+        "video",
+        "--input",
+        "keyframe.png",
+        "--prompt",
+        "Slow cinematic push-in",
+        "--preset",
+        "cinematic",
+        "--output",
+        "assets/shot-01",
+        "--json",
+      ],
+      { cwd, scenario: "upload-storage-rejected" },
+    );
+
+    const payload = expectSingleJsonLine(video);
+    expect(video.code).toBe(40);
+    expect(payload).toMatchObject({
+      ok: false,
+      error: {
+        code: "UPLOAD_FAILED",
+        retryable: false,
+        details: { stage: "signed-url-put", status: 403, providerCode: "SignatureDoesNotMatch" },
+      },
+    });
+    expect((payload.error as { message: string }).message).toContain(
+      "not an account or credits problem",
+    );
+    expect(video.state.upload).toBe(1);
+    expect(video.state.generate).toBeUndefined();
+    expect(await listFiles(path.join(cwd, "assets", "shot-01"))).toEqual([]);
+  });
+
+  it("detects the same rejection proactively through doctor --check-upload", async () => {
+    const result = await runCli(["doctor", "--check-upload", "--json"], {
+      scenario: "upload-storage-rejected",
+    });
+
+    const payload = expectSingleJsonLine(result);
+    expect(result.code).toBe(40);
+    expect(payload).toMatchObject({ ok: false, error: { code: "UPLOAD_FAILED" } });
+    expect((payload.error as { details: { uploads: unknown } }).details.uploads).toEqual({
+      ok: false,
+      status: 403,
+      providerCode: "SignatureDoesNotMatch",
+    });
+    expect(result.state.generate).toBeUndefined();
+  });
+
   it("retries a transient download failure and still writes the manifest", async () => {
     const result = await runCli(
       [
