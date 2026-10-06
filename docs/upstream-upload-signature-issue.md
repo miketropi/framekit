@@ -214,6 +214,13 @@ tried, and the key was proven valid first, so the negative results are meaningfu
 | OMP MCP gateway (`jobs.get`, `jobs.list`, `media.get`) | `JOB_NOT_FOUND`; the tenant's job list is empty; `media.get` answers `ACCESS_DENIED: not available for this tenant`           |
 | Every generation id this machine created               | does not match (4 keyframes, thumbnail, smoke video)                                                                          |
 
+**Positive control (same day):** a request created through the provider's v2 model endpoint
+(`POST /bytedance/seedance-2.5/image-to-video` → `request_id 5e519e5d-1054-483d-b571-c2862558b9dc`)
+_is_ visible to this key — `/v1/job-sets/{id}` resolves it and reports `in_progress`, and the
+v2 `/requests/{id}/status` route answers for it as well. The routes therefore work for
+requests created in this account through either API surface, so the dashboard id's absence
+is not a routing artifact.
+
 Conclusion: the transaction belongs to a different account/workspace than the API key used
 here, or it is a ledger entry whose result asset is no longer retrievable. Requested from
 support: locate the asset behind that id, or confirm whether the stored result expired.
