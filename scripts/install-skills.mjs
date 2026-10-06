@@ -40,6 +40,12 @@ function parseArgs(argv) {
         options.projectDir = path.resolve(next);
         index += 1;
       }
+    } else if (arg === "--target" || arg === "-t") {
+      options.scope = "target";
+      const next = argv[index + 1];
+      if (next === undefined || next.startsWith("-")) throw new Error("--target needs a directory");
+      options.target = path.resolve(next.replace(/^~(?=\/|$)/, homedir()));
+      index += 1;
     } else if (arg === "--user" || arg === "--global" || arg === "-g") {
       options.scope = "user";
     } else if (arg === "--copy") {
@@ -139,6 +145,7 @@ if (options.help) {
       "",
       "  --user, -g            user-global root: ~/.omp/agent/skills (default)",
       "  --project, -p [dir]   project root: <dir>/.omp/skills (default: cwd)",
+      "  --target, -t <dir>    explicit skills root, e.g. ~/.claude/skills or ~/.agents/skills",
       "  --copy                copy files instead of symlinking",
       "  --force, -f           replace existing entries",
       "  --dry-run             report what would happen",
@@ -148,9 +155,11 @@ if (options.help) {
 }
 
 const targetRoot =
-  options.scope === "user"
-    ? path.join(homedir(), ".omp", "agent", "skills")
-    : path.join(options.projectDir, ".omp", "skills");
+  options.scope === "target"
+    ? options.target
+    : options.scope === "user"
+      ? path.join(homedir(), ".omp", "agent", "skills")
+      : path.join(options.projectDir, ".omp", "skills");
 
 console.log(`source: ${path.join(repoRoot, "skills")}`);
 console.log(`target: ${targetRoot}${options.copy ? " (copy)" : " (symlink)"}`);

@@ -1,6 +1,6 @@
 ---
 name: higgsfield-video-generation
-description: Animate an approved keyframe with Higgsfield image-to-video, keep identity consistent, separate subject action from camera movement, and avoid paying to re-time an already approved shot.
+description: Animate an approved keyframe with Higgsfield image-to-video, keep identity consistent, separate subject action from camera movement, and recover a paid result by request id instead of re-rendering it.
 ---
 
 # Higgsfield video generation
@@ -8,6 +8,19 @@ description: Animate an approved keyframe with Higgsfield image-to-video, keep i
 Use this skill when a shot needs **motion** and the project already owns (or should own) a
 keyframe. Source media comes from Higgsfield; timing, cuts, speed, and text stay in
 Remotion.
+
+## Prerequisites and scope
+
+- Credentials come from the environment or a `.env` in the working directory
+  (`HF_CREDENTIALS="<key_id>:<key_secret>"`, or `HF_API_KEY` + `HF_API_SECRET`). Never
+  print, log, or commit them.
+- When setup is in doubt, run `hf doctor --json` first (add `--check-upload` to probe the
+  upload path, non-billable). It generates nothing.
+- Scope: `hf video` drives the provider's **V1** image-to-video model (`dop-video`).
+  Other provider video models (for example `bytedance/seedance-*`, `kling-*`) are **not**
+  reachable through `hf` — they live on the provider's v2 endpoints, outside this tool.
+- This model returns **1280×720**, whatever the input keyframe's resolution, so plan the
+  edit at 720p or upscale deliberately rather than expecting a 2048-wide master.
 
 ## Before you animate
 
@@ -25,7 +38,9 @@ Remotion.
 dolly-in, shallow depth of field, natural light"
 ```
 
-Do not describe cuts, durations, or music — those belong to the composition step.
+Do not describe cuts, durations, or music — those belong to the composition step. The
+model also cannot render legible text, URLs, or captions: keep prompts text-free and
+composite copy later.
 
 ## Motion presets
 
@@ -55,10 +70,12 @@ Rules:
 
 - `--input` accepts a local image or an https URL. Local files are validated by content,
   hashed, and uploaded once per content hash; the URL is cached, so repeated commands do
-  not re-upload.
+  not re-upload. A URL input skips uploading entirely.
 - Use `--dry-run --json` to confirm the resolved preset, model, motion, and input hash
   before paying.
-- Use `--model <logical-model>` only when a preset's implied model is not what you want.
+- `--model` overrides the preset's logical model. The provider model values it resolves to
+  are `dop-lite`, `dop-preview` and `dop-turbo` (the published SDK's `dop-standard` is no
+  longer accepted by the API, and the `cinematic` preset defaults to `dop-turbo`).
 - Never pass `--force` to "try again": without it, an identical request returns the local
   asset immediately and a conflicting completed directory fails instead of overwriting.
 - Long jobs poll; a `TIMEOUT` result is not a failure. It carries `requestId` and
@@ -73,17 +90,20 @@ Rules:
    hash, and the resolved request — cite this when the shot is questioned later.
 4. Mark the shot `generated`, then `approved` after review, and reference only the local
    path from Remotion.
+5. **Lost the file?** Do not re-render: `hf status <requestId> --json` returns the
+   provider's result URLs in `details.resultUrls` (`details.source` names the route that
+   answered: `job-set` or `request`).
 
 ## Failure handling
 
-| Code                                    | What to do                                                                            |
-| --------------------------------------- | ------------------------------------------------------------------------------------- |
-| `GENERATION_FAILED`                     | inspect `requestId` with `hf status`; change the prompt/input before resubmitting     |
-| `MODERATION_REJECTED`                   | change the concept; resubmitting unchanged will fail again                            |
-| `CANCELED`                              | decide whether the shot is still needed before paying again                           |
-| `VALIDATION_FAILED`                     | fix flags, motion name ambiguity, or output-directory conflict                        |
-| `INVALID_INPUT`                         | the keyframe is missing, empty, not a supported image, or too large                   |
-| `UPLOAD_FAILED`                         | local input could not be uploaded (auth/credits/network); do not loop                 |
-| `TIMEOUT`                               | not a failure: inspect status, then resume or resubmit deliberately                   |
-| `RATE_LIMITED` / `PROVIDER_UNAVAILABLE` | genuinely retryable with backoff                                                      |
-| `DOWNLOAD_FAILED` / `LOCAL_IO_ERROR`    | fix the output path/permissions; the paid job may still be retrievable by `requestId` |
+| Code                                    | What to do                                                                                                                                                                                                                                                                                 |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GENERATION_FAILED`                     | inspect `requestId` with `hf status`; change the prompt/input before resubmitting                                                                                                                                                                                                          |
+| `MODERATION_REJECTED`                   | change the concept; resubmitting unchanged will fail again                                                                                                                                                                                                                                 |
+| `CANCELED`                              | decide whether the shot is still needed before paying again                                                                                                                                                                                                                                |
+| `VALIDATION_FAILED`                     | fix flags, motion name ambiguity, model value, or output-directory conflict                                                                                                                                                                                                                |
+| `INVALID_INPUT`                         | the keyframe is missing, empty, not a supported image, or too large                                                                                                                                                                                                                        |
+| `UPLOAD_FAILED`                         | a local input could not be uploaded. With `error.details.stage == "signed-url-put"` the provider's own storage rejected its signed URL — **not** a credits problem. Confirm with `hf doctor --check-upload --json`, then pass an HTTPS `--input <url>` (skips uploads) or wait. Never loop |
+| `TIMEOUT`                               | not a failure: inspect status, then resume or resubmit deliberately                                                                                                                                                                                                                        |
+| `RATE_LIMITED` / `PROVIDER_UNAVAILABLE` | genuinely retryable with backoff                                                                                                                                                                                                                                                           |
+| `DOWNLOAD_FAILED` / `LOCAL_IO_ERROR`    | fix the output path/permissions, then recover the media for free with `hf status <requestId> --json` (`details.resultUrls`) instead of paying again                                                                                                                                        |

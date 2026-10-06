@@ -452,21 +452,24 @@ session) or per project:
 ```bash
 pnpm skills:install                    # user-global: ~/.omp/agent/skills (OMP native provider, priority 100)
 pnpm skills:install:project            # project-local: ./.omp/skills
+node scripts/install-skills.mjs --target ~/.claude/skills   # any other agent's global skills root
 node scripts/install-skills.mjs --copy # copy instead of symlink (machines without symlink support)
 node scripts/install-skills.mjs --force --dry-run
 ```
 
-Skills are symlinked, so edits in this repository take effect on the next OMP start.
-OMP discovers them at startup and exposes them as `skill://<name>` (and `/skill:<name>`
-in interactive mode):
+Skills are symlinked, so edits in this repository take effect the next time the agent
+starts. OMP discovers them at startup and exposes them as `skill://<name>` (and
+`/skill:<name>` in interactive mode):
 
 ```bash
-omp read skill://higgsfield-media-workflow      # verify discovery
+omp read skill://higgsfield-media-workflow      # verify discovery and read the installed copy
 ```
 
-Add `--project <dir>` to target another checkout. Other agents: point them at
-`skills/` directly, or copy the directories into their own skills root
-(`~/.claude/skills`, `~/.agents/skills`, …).
+`--target` points at any skills root a different agent reads — e.g. `~/.claude/skills`,
+`~/.agents/skills`, `~/.codex/skills`. `--project <dir>` targets another checkout, and
+`--force` replaces an entry that is not a link to this checkout (without it, existing
+entries are reported and left alone). To uninstall, remove the three
+`higgsfield-*` entries from the root.
 
 ## Tests
 
