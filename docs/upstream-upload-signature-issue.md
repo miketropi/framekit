@@ -173,7 +173,19 @@ measured sets and documents how to re-harvest them.
 ## Workaround used while this is open
 
 Pass an HTTPS URL as the input instead of a local file, which skips the upload path
-entirely. Our adapter also now reports this condition accurately instead of mislabeling
+entirely. **Verified end to end on 2026-10-06** with a real (billable) request, which also
+shows the account and plan are unaffected by this defect:
+
+|           |                                                                                      |
+| --------- | ------------------------------------------------------------------------------------ |
+| Command   | `hf video --input <https image> --prompt "…" --preset cinematic --motion "Dolly In"` |
+| Result    | `status: completed`, exit `0`, `requestId 71fec110-5840-4a02-b43e-4b19376912f6`      |
+| Artifact  | `video.mp4`, 5,454,501 bytes, h264, 1280×720, 30 fps, 5.37 s (161 frames)            |
+| Integrity | on-disk SHA-256 matches the manifest (`b3f123ac…`)                                   |
+| Wall time | 7m1s of submission + polling                                                         |
+
+Note for compositions: this model returns **1280×720** regardless of the 2048×1152 input,
+so scale in the edit rather than expecting a 2048-wide master. Our adapter also now reports this condition accurately instead of mislabeling
 it as an account/credit problem:
 
 ```
