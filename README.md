@@ -134,13 +134,13 @@ hf characters list [--page <n>] [--page-size <1..100>] [--json]
 
 Agents name intent; the adapter resolves provider parameters.
 
-| Preset         | Command | Logical model | Resolved parameters                         |
-| -------------- | ------- | ------------- | ------------------------------------------- |
-| `square-hd`    | `image` | `soul-image`  | `1536x1536`, `1080p`, batch 1               |
-| `portrait-hd`  | `image` | `soul-image`  | `1536x2048`, `1080p`, batch 1               |
-| `landscape-hd` | `image` | `soul-image`  | `2048x1152`, `1080p`, batch 1               |
-| `cinematic`    | `video` | `dop-video`   | model `dop-standard`, motion strength `0.8` |
-| `standard`     | `speak` | `speak-video` | quality `mid`, duration `5`                 |
+| Preset         | Command | Logical model | Resolved parameters                      |
+| -------------- | ------- | ------------- | ---------------------------------------- |
+| `square-hd`    | `image` | `soul-image`  | `1536x1536`, `1080p`, batch 1            |
+| `portrait-hd`  | `image` | `soul-image`  | `1536x2048`, `1080p`, batch 1            |
+| `landscape-hd` | `image` | `soul-image`  | `2048x1152`, `1080p`, batch 1            |
+| `cinematic`    | `video` | `dop-video`   | model `dop-turbo`, motion strength `0.8` |
+| `standard`     | `speak` | `speak-video` | quality `mid`, duration `5`              |
 
 Explicit flags win over preset values. `--reference-strength` requires `--reference`;
 `--motion-strength` requires `--motion`. `--batch` accepts only `1` or `4`.
@@ -197,7 +197,7 @@ Success:
   "inputs": [
     { "kind": "image", "localPath": "projects/demo/keyframes/shot-01.png", "sha256": "..." }
   ],
-  "resolvedRequest": { "preset": "cinematic", "model": "dop-standard" },
+  "resolvedRequest": { "preset": "cinematic", "model": "dop-turbo" },
   "reused": false,
   "dryRun": false
 }

@@ -7,9 +7,11 @@ import {
 import { ToolError } from "../../src/domain/errors";
 import type { MotionPreset, StylePreset } from "../../src/domain/asset";
 
+const ZOOM_ID = "fbcbec5b-30f8-4b17-ba6e-8e8d5b265562";
+const PAN_ID = "81ca2cd2-05db-4222-9ba0-a32e5185adfb";
 const motions: MotionPreset[] = [
-  { id: "motion-zoom", name: "Zoom In" },
-  { id: "motion-pan", name: "Pan Left" },
+  { id: ZOOM_ID, name: "Zoom In" },
+  { id: PAN_ID, name: "Pan Left" },
   { id: "motion-dup-a", name: "Dolly" },
   { id: "motion-dup-b", name: "Dolly" },
 ];
@@ -17,9 +19,9 @@ const styles: StylePreset[] = [{ id: "style-noir", name: "Noir Film" }];
 
 describe("motion and style resolution", () => {
   it("resolves by exact id first, then by name, case-insensitively", () => {
-    expect(resolveMotionRef("motion-zoom", motions).id).toBe("motion-zoom");
-    expect(resolveMotionRef("zoom in", motions).id).toBe("motion-zoom");
-    expect(resolveMotionRef("Pan Left", motions).id).toBe("motion-pan");
+    expect(resolveMotionRef(ZOOM_ID, motions).id).toBe(ZOOM_ID);
+    expect(resolveMotionRef("zoom in", motions).id).toBe(ZOOM_ID);
+    expect(resolveMotionRef("Pan Left", motions).id).toBe(PAN_ID);
     expect(resolveStyleRef("noir film", styles).id).toBe("style-noir");
   });
 
@@ -46,7 +48,7 @@ describe("motion and style resolution", () => {
     } catch (error) {
       expect((error as ToolError).code).toBe("VALIDATION_FAILED");
       expect((error as ToolError).details).toMatchObject({
-        candidates: ["motion-zoom", "motion-pan", "motion-dup-a", "motion-dup-b"],
+        candidates: [ZOOM_ID, PAN_ID, "motion-dup-a", "motion-dup-b"],
       });
     }
   });
@@ -93,7 +95,7 @@ describe("V1 request mapping", () => {
       {
         capability: "image-to-video",
         logicalModel: "dop-video",
-        model: "dop-turbo",
+        model: "dop-preview",
         prompt: "Slow dolly-in",
         preset: "cinematic",
         inputImages: [{ kind: "image", url: "https://cdn.test/keyframe.png" }],
@@ -105,10 +107,10 @@ describe("V1 request mapping", () => {
 
     expect(mapped.endpoint).toBe("/v1/image2video/dop");
     expect(mapped.params).toEqual({
-      model: "dop-turbo",
+      model: "dop-preview",
       prompt: "Slow dolly-in",
       input_images: [{ type: "image_url", image_url: "https://cdn.test/keyframe.png" }],
-      motions: [{ id: "motion-zoom", strength: 0.8 }],
+      motions: [{ id: ZOOM_ID, strength: 0.8 }],
     });
   });
 
@@ -180,6 +182,17 @@ describe("V1 request mapping", () => {
     expect(() => mapGenerationRequest({ ...base, logicalModel: "nope" })).toThrow(
       /Unknown or disabled logical model/,
     );
+    // `dop-standard` is what the published SDK enum offers; the API rejects it.
+    expect(() =>
+      mapGenerationRequest({
+        capability: "image-to-video",
+        logicalModel: "dop-video",
+        model: "dop-standard",
+        prompt: "x",
+        preset: "cinematic",
+        inputImages: [{ kind: "image", url: "https://cdn.test/a.png" }],
+      }),
+    ).toThrow(/Unsupported model/);
     expect(() =>
       mapGenerationRequest({
         capability: "image-to-video",

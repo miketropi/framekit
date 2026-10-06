@@ -61,7 +61,9 @@ const MODEL_DEFINITIONS: Record<string, ModelDefinition> = {
     capability: "image-to-video",
     endpoint: "/v1/image2video/dop",
     enabled: true,
-    defaults: Object.freeze({ model: "dop-standard" }),
+    // `dop-standard` from the published SDK enum no longer exists on the API, which
+    // accepts dop-lite | dop-preview | dop-turbo (see providers/.../models.ts).
+    defaults: Object.freeze({ model: "dop-turbo" }),
   }),
   "speak-video": Object.freeze({
     id: "speak-video",
@@ -112,7 +114,7 @@ const VIDEO_PRESETS: Record<string, VideoPreset> = {
     name: "cinematic",
     capability: "image-to-video",
     logicalModel: "dop-video",
-    model: "dop-standard",
+    model: "dop-turbo",
     motionStrength: 0.8,
   }),
 };

@@ -207,7 +207,7 @@ describe("generation transaction", () => {
         generate: async (request) => {
           expect(request.capability).toBe("image-to-video");
           expect(request).toMatchObject({
-            model: "dop-standard",
+            model: "dop-turbo",
             motion: "Zoom In",
             motionStrength: 0.8,
           });

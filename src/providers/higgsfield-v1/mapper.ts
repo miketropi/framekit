@@ -1,14 +1,13 @@
+import { InputAudio, InputImage, inputMotion } from "@higgsfield/client";
 import {
-  BatchSize,
-  DoPModel,
-  InputAudio,
-  InputImage,
-  SoulQuality,
-  SoulSize,
-  SpeakDuration,
-  SpeakVideoQuality,
-  inputMotion,
-} from "@higgsfield/client";
+  UUID_PATTERN,
+  V1_DOP_MODELS,
+  V1_SOUL_BATCHES,
+  V1_SOUL_QUALITIES,
+  V1_SOUL_SIZES,
+  V1_SPEAK_DURATIONS,
+  V1_SPEAK_QUALITIES,
+} from "./models";
 import { MAX_SEED } from "../../config/defaults";
 import type { MotionPreset, StylePreset } from "../../domain/asset";
 import { ToolError } from "../../domain/errors";
@@ -113,9 +112,9 @@ function mapTextToImage(
   request: Extract<ProviderGenerationRequest, { capability: "text-to-image" }>,
   context: MapperContext,
 ): Record<string, unknown> {
-  assertKnownValue("width_and_height", request.widthAndHeight, Object.values(SoulSize));
-  assertKnownValue("quality", request.quality, Object.values(SoulQuality));
-  assertKnownValue("batch", request.batch, Object.values(BatchSize));
+  assertKnownValue("width_and_height", request.widthAndHeight, V1_SOUL_SIZES);
+  assertKnownValue("quality", request.quality, V1_SOUL_QUALITIES);
+  assertKnownValue("batch", request.batch, V1_SOUL_BATCHES);
 
   const params: Record<string, unknown> = {
     prompt: request.prompt,
@@ -166,7 +165,7 @@ function mapImageToVideo(
   request: Extract<ProviderGenerationRequest, { capability: "image-to-video" }>,
   context: MapperContext,
 ): Record<string, unknown> {
-  assertKnownValue("model", request.model, Object.values(DoPModel));
+  assertKnownValue("model", request.model, V1_DOP_MODELS);
   if (request.inputImages.length === 0) {
     throw new ToolError({
       code: "VALIDATION_FAILED",
@@ -182,6 +181,15 @@ function mapImageToVideo(
 
   if (request.motion !== undefined) {
     const motion = resolveMotionRef(request.motion, context.motions);
+    // The API requires a motion UUID; discovery normally guarantees this, and the
+    // check turns a provider 422 into a clear local validation error.
+    if (!UUID_PATTERN.test(motion.id)) {
+      throw new ToolError({
+        code: "VALIDATION_FAILED",
+        message: `Motion "${motion.name}" resolved to an id the API will not accept: ${motion.id} is not a UUID.`,
+        details: { motion: motion.name, id: motion.id },
+      });
+    }
     const strength = request.motionStrength ?? 1;
     assertUnitInterval("motion_strength", strength);
     params.motions = [inputMotion(motion.id, strength)];
@@ -193,8 +201,8 @@ function mapImageToVideo(
 function mapSpeechToVideo(
   request: Extract<ProviderGenerationRequest, { capability: "speech-to-video" }>,
 ): Record<string, unknown> {
-  assertKnownValue("quality", request.quality, Object.values(SpeakVideoQuality));
-  assertKnownValue("duration", request.duration, Object.values(SpeakDuration));
+  assertKnownValue("quality", request.quality, V1_SPEAK_QUALITIES);
+  assertKnownValue("duration", request.duration, V1_SPEAK_DURATIONS);
 
   return {
     input_image: InputImage.fromUrl(request.image.url),

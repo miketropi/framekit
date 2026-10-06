@@ -1,12 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
+  V1_DOP_MODELS,
+  V1_SOUL_BATCHES,
+  V1_SOUL_QUALITIES,
+  V1_SOUL_SIZES,
+  V1_SPEAK_DURATIONS,
+  V1_SPEAK_QUALITIES,
+} from "../../src/providers/higgsfield-v1/models";
+import {
   GENERIC_LOGICAL_MODEL,
   IMAGE_PRESET_NAMES,
+  listImagePresets,
   listModels,
+  listSpeechPresets,
   resolveImagePreset,
   resolveModel,
   resolveSpeechPreset,
   resolveVideoPreset,
+  listVideoPresets,
   VIDEO_PRESET_NAMES,
 } from "../../src/domain/model-registry";
 
@@ -39,10 +50,24 @@ describe("model registry", () => {
     });
     expect(resolveVideoPreset("cinematic")).toMatchObject({
       logicalModel: "dop-video",
-      model: "dop-standard",
+      model: "dop-turbo",
       motionStrength: 0.8,
     });
     expect(resolveSpeechPreset("standard")).toMatchObject({ quality: "mid", duration: 5 });
+
+    // Guard against SDK enums drifting from the API again (dop-standard did).
+    for (const preset of listVideoPresets()) {
+      expect(V1_DOP_MODELS).toContain(preset.model);
+    }
+    for (const preset of listImagePresets()) {
+      expect(V1_SOUL_SIZES).toContain(preset.widthAndHeight);
+      expect(V1_SOUL_QUALITIES).toContain(preset.quality);
+      expect(V1_SOUL_BATCHES).toContain(preset.batch);
+    }
+    for (const preset of listSpeechPresets()) {
+      expect(V1_SPEAK_QUALITIES).toContain(preset.quality);
+      expect(V1_SPEAK_DURATIONS).toContain(preset.duration);
+    }
 
     expect(resolveImagePreset("nope")).toBeUndefined();
     expect(resolveVideoPreset("nope")).toBeUndefined();
